@@ -156,6 +156,18 @@ function matchesFilters(task: Task, filters: TaskFilters | undefined): boolean {
     )
       return false;
   }
+  if (filters.expiresFrom != null && filters.expiresFrom !== "") {
+    if (task.expiresAt == null) return false;
+    const from = new Date(filters.expiresFrom).getTime();
+    const exp = new Date(task.expiresAt).getTime();
+    if (exp < from) return false;
+  }
+  if (filters.expiresTo != null && filters.expiresTo !== "") {
+    if (task.expiresAt == null) return false;
+    const toEnd = new Date(filters.expiresTo + "T23:59:59.999Z").getTime();
+    const exp = new Date(task.expiresAt).getTime();
+    if (exp > toEnd) return false;
+  }
   return true;
 }
 
@@ -239,7 +251,7 @@ export async function deleteTasks(ids: string[]): Promise<void> {
  */
 export async function bulkUpdateTasks(
   ids: string[],
-  data: Pick<Task, "reward" | "campaignId">
+  data: Partial<Pick<Task, "reward" | "campaignId">>
 ): Promise<Task[]> {
   await mutationDelay();
   const tasks = getTasksFromStorage();
@@ -250,7 +262,8 @@ export async function bulkUpdateTasks(
     if (!set.has(tasks[i]!.id)) continue;
     const next: Task = {
       ...tasks[i]!,
-      ...data,
+      ...(data.reward != null && { reward: data.reward }),
+      ...(data.campaignId !== undefined && { campaignId: data.campaignId }),
       updatedAt: now,
     };
     tasks[i] = next;

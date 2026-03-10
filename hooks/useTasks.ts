@@ -110,7 +110,7 @@ export function useBulkUpdateTasks(
   options?: UseMutationOptions<
     Task[],
     Error,
-    { ids: string[]; data: Pick<Task, "reward" | "campaignId"> }
+    { ids: string[]; data: Partial<Pick<Task, "reward" | "campaignId">> }
   >
 ) {
   const queryClient = useQueryClient();
