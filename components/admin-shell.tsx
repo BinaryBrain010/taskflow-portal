@@ -158,7 +158,7 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
       <div className="flex flex-1 flex-col md:min-w-0">
         <header className="flex h-14 shrink-0 items-center gap-3 border-b border-border bg-background px-4 md:border-l">
           <SheetRoot open={mobileSheetOpen} onOpenChange={setMobileSheetOpen}>
-            <SheetTrigger asChild>
+            <SheetTrigger>
               <Button variant="ghost" size="icon" className="md:hidden" aria-label="Open menu">
                 <PanelLeft className="size-5" />
               </Button>

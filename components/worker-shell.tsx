@@ -89,7 +89,7 @@ export function WorkerShell({
       {/* Top navbar — mobile-first */}
       <header className="sticky top-0 z-40 flex h-14 shrink-0 items-center gap-3 border-b border-border bg-background px-4">
         <SheetRoot open={mobileMenuOpen} onOpenChange={setMobileMenuOpen}>
-          <SheetTrigger asChild>
+          <SheetTrigger>
             <Button variant="ghost" size="icon" className="md:hidden" aria-label="Open menu">
               <Menu className="size-5" />
             </Button>
