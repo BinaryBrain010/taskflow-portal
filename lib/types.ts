@@ -60,7 +60,11 @@ export type LegacyTaskStatus =
   | "completed"
   | "cancelled";
 
-export type SubmissionStatus =
+/** Submission status for the submission service model */
+export type SubmissionStatus = "pending" | "approved" | "rejected";
+
+/** Legacy submission status (for migration / backward compat) */
+export type LegacySubmissionStatus =
   | "pending"
   | "submitted"
   | "approved"
@@ -93,16 +97,41 @@ export interface LegacyTask {
   tags: string[];
 }
 
+/** Submission with optional populated task and worker */
 export interface Submission {
   id: string;
   taskId: string;
-  userId: string;
+  workerId: string;
   status: SubmissionStatus;
-  content: string; // markdown or structured payload
-  submittedAt?: string;
-  reviewedAt?: string;
-  reviewedById?: string;
-  feedback?: string;
+  proofUrls: string[];
+  submittedAt: string | null;
+  reviewedAt: string | null;
+  reviewNote: string | null;
   createdAt: string;
   updatedAt: string;
+  /** Populated when returned from getSubmissions / getSubmissionById */
+  task?: Task;
+  /** Populated when returned from getSubmissions / getSubmissionById */
+  worker?: User;
+}
+
+/** Filters for getSubmissions */
+export interface SubmissionFilters {
+  status?: SubmissionStatus | SubmissionStatus[];
+  taskId?: string;
+  workerId?: string;
+  /** ISO date range for submittedAt */
+  dateFrom?: string | null;
+  dateTo?: string | null;
+  /** When true, result is sorted by taskId so client can group */
+  groupByTask?: boolean;
+}
+
+/** DTO for creating a submission (proofUrls or content for backward compat) */
+export interface CreateSubmissionDTO {
+  taskId: string;
+  workerId: string;
+  proofUrls?: string[];
+  /** If proofUrls not provided, single content string is stored as one proof URL. */
+  content?: string;
 }

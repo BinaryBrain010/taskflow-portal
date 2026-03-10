@@ -6,10 +6,8 @@ import { cn } from "@/lib/utils";
 
 const STATUS_LABELS: Record<string, string> = {
   pending: "Pending",
-  submitted: "Submitted",
   approved: "Approved",
   rejected: "Rejected",
-  revision_requested: "Revision requested",
 };
 
 interface TaskRowExpansionProps {
@@ -55,7 +53,7 @@ export function TaskRowExpansion({ task }: TaskRowExpansionProps) {
                   "rounded-md px-2 py-0.5 text-sm",
                   status === "approved" && "bg-green-500/15 text-green-700 dark:text-green-400",
                   status === "rejected" && "bg-destructive/15 text-destructive",
-                  (status === "pending" || status === "submitted") &&
+                  status === "pending" &&
                     "bg-amber-500/15 text-amber-700 dark:text-amber-400"
                 )}
               >
@@ -89,7 +87,7 @@ export function TaskRowExpansion({ task }: TaskRowExpansionProps) {
                   className={cn(
                     s.status === "approved" && "text-green-600 dark:text-green-400",
                     s.status === "rejected" && "text-destructive",
-                    (s.status === "pending" || s.status === "submitted") && "text-amber-600 dark:text-amber-400"
+                    s.status === "pending" && "text-amber-600 dark:text-amber-400"
                   )}
                 >
                   {STATUS_LABELS[s.status] ?? s.status}
