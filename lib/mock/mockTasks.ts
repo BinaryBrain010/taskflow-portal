@@ -1,8 +1,8 @@
-import type { Task } from "@/lib/types";
+import type { LegacyTask } from "@/lib/types";
 
 const ADMIN_ID = "usr_admin_01";
 
-const TASK_TEMPLATES: Omit<Task, "id" | "createdAt" | "updatedAt">[] = [
+const TASK_TEMPLATES: Omit<LegacyTask, "id" | "createdAt" | "updatedAt">[] = [
   {
     title: "Label 100 product images",
     description: "Classify product photos into predefined categories.",
@@ -537,9 +537,9 @@ const TASK_TEMPLATES: Omit<Task, "id" | "createdAt" | "updatedAt">[] = [
 ];
 
 function addIdAndTimestamps(
-  t: Omit<Task, "id" | "createdAt" | "updatedAt">,
+  t: Omit<LegacyTask, "id" | "createdAt" | "updatedAt">,
   index: number
-): Task {
+): LegacyTask {
   const id = `tsk_${String(index + 1).padStart(3, "0")}`;
   const base = new Date("2025-01-01T00:00:00.000Z").getTime();
   const created = new Date(base + index * 3600000 * 12).toISOString();
@@ -552,4 +552,4 @@ function addIdAndTimestamps(
   };
 }
 
-export const mockTasks: Task[] = TASK_TEMPLATES.map(addIdAndTimestamps);
+export const mockTasks: LegacyTask[] = TASK_TEMPLATES.map(addIdAndTimestamps);
