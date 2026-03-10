@@ -1,0 +1,96 @@
+import type { User } from "@/lib/types";
+
+export const mockUsers: User[] = [
+  {
+    id: "usr_admin_01",
+    email: "admin@taskflow.io",
+    name: "Alex Chen",
+    role: "admin",
+    avatarUrl: undefined,
+    createdAt: "2024-01-15T08:00:00.000Z",
+    updatedAt: "2025-03-01T12:00:00.000Z",
+  },
+  {
+    id: "usr_wkr_01",
+    email: "morgan.reed@email.com",
+    name: "Morgan Reed",
+    role: "worker",
+    createdAt: "2024-02-10T09:30:00.000Z",
+    updatedAt: "2025-02-28T14:22:00.000Z",
+  },
+  {
+    id: "usr_wkr_02",
+    email: "jordan.blake@email.com",
+    name: "Jordan Blake",
+    role: "worker",
+    createdAt: "2024-02-12T11:00:00.000Z",
+    updatedAt: "2025-03-05T09:15:00.000Z",
+  },
+  {
+    id: "usr_wkr_03",
+    email: "sam.taylor@email.com",
+    name: "Sam Taylor",
+    role: "worker",
+    createdAt: "2024-03-01T14:20:00.000Z",
+    updatedAt: "2025-03-08T16:45:00.000Z",
+  },
+  {
+    id: "usr_wkr_04",
+    email: "casey.rivera@email.com",
+    name: "Casey Rivera",
+    role: "worker",
+    createdAt: "2024-03-15T10:00:00.000Z",
+    updatedAt: "2025-03-07T11:30:00.000Z",
+  },
+  {
+    id: "usr_wkr_05",
+    email: "riley.kim@email.com",
+    name: "Riley Kim",
+    role: "worker",
+    createdAt: "2024-04-02T08:45:00.000Z",
+    updatedAt: "2025-03-09T08:00:00.000Z",
+  },
+  {
+    id: "usr_wkr_06",
+    email: "quinn.patel@email.com",
+    name: "Quinn Patel",
+    role: "worker",
+    createdAt: "2024-04-20T13:00:00.000Z",
+    updatedAt: "2025-03-06T17:20:00.000Z",
+  },
+  {
+    id: "usr_wkr_07",
+    email: "skyler.nguyen@email.com",
+    name: "Skyler Nguyen",
+    role: "worker",
+    createdAt: "2024-05-05T09:10:00.000Z",
+    updatedAt: "2025-03-04T12:00:00.000Z",
+  },
+  {
+    id: "usr_wkr_08",
+    email: "avery.foster@email.com",
+    name: "Avery Foster",
+    role: "worker",
+    createdAt: "2024-05-18T16:30:00.000Z",
+    updatedAt: "2025-03-03T10:45:00.000Z",
+  },
+  {
+    id: "usr_wkr_09",
+    email: "cameron.hayes@email.com",
+    name: "Cameron Hayes",
+    role: "worker",
+    createdAt: "2024-06-01T11:00:00.000Z",
+    updatedAt: "2025-03-02T15:30:00.000Z",
+  },
+  {
+    id: "usr_wkr_10",
+    email: "drew.mitchell@email.com",
+    name: "Drew Mitchell",
+    role: "worker",
+    createdAt: "2024-06-15T14:00:00.000Z",
+    updatedAt: "2025-03-01T09:00:00.000Z",
+  },
+];
+
+export const adminUser = mockUsers[0];
+export const workerUsers = mockUsers.slice(1);
