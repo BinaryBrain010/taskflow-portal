@@ -6,10 +6,10 @@ const TASKS_STORAGE_KEY = "tasks" as const;
 
 function getTasksFromStorage(): Task[] {
   const stored = getItem<Task[]>(TASKS_STORAGE_KEY);
-  if (Array.isArray(stored)) return stored;
-  const seed = getSeedTasks();
-  setItem(TASKS_STORAGE_KEY, seed);
-  return seed;
+  if (Array.isArray(stored) && stored.length > 0) return stored;
+  const expanded = expandSeedForFeed();
+  setItem(TASKS_STORAGE_KEY, expanded);
+  return expanded;
 }
 
 function getSeedTasks(): Task[] {
@@ -107,6 +107,34 @@ function getSeedTasks(): Task[] {
       updatedAt: now,
     },
   ];
+}
+
+/** Expand seed with many tasks for feed virtual scroll (1000+). */
+function expandSeedForFeed(): Task[] {
+  const base = getSeedTasks();
+  const expanded: Task[] = [];
+  const types: Task["type"][] = ["survey", "content_review", "data_labeling", "transcription"];
+  const statuses: Task["status"][] = ["active", "active", "active", "paused", "closed"];
+  for (let i = 0; i < 2000; i++) {
+    const t = base[i % base.length]!;
+    const type = types[i % types.length]!;
+    const status = statuses[i % statuses.length]!;
+    const id = `tsk_${String(i + 1).padStart(4, "0")}`;
+    const created = new Date(Date.now() - i * 3600000).toISOString();
+    expanded.push({
+      ...t,
+      id,
+      title: `${t.title} #${i + 1}`,
+      type,
+      status,
+      reward: Math.floor(100 + Math.random() * 900),
+      totalSlots: 10 + (i % 100),
+      filledSlots: Math.floor((i % 10) * 2),
+      createdAt: created,
+      updatedAt: created,
+    });
+  }
+  return expanded;
 }
 
 function matchesFilters(task: Task, filters: TaskFilters | undefined): boolean {
