@@ -102,17 +102,3 @@ export interface Submission {
   createdAt: string;
   updatedAt: string;
 }
-
-export interface Submission {
-  id: string;
-  taskId: string;
-  userId: string;
-  status: SubmissionStatus;
-  content: string; // markdown or structured payload
-  submittedAt?: string;
-  reviewedAt?: string;
-  reviewedById?: string;
-  feedback?: string;
-  createdAt: string;
-  updatedAt: string;
-}
