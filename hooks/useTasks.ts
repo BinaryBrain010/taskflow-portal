@@ -63,9 +63,9 @@ export function useCreateTask(
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: createTask,
-    onSuccess: (_data, _variables, context) => {
+    onSuccess: (data, variables, context, mutation) => {
       queryClient.invalidateQueries({ queryKey: taskKeys.lists() });
-      options?.onSuccess?.(_data, _variables, context);
+      options?.onSuccess?.(data, variables, context, mutation);
     },
     ...options,
   });
@@ -78,10 +78,10 @@ export function useUpdateTask(
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: ({ id, data }) => updateTask(id, data),
-    onSuccess: (data, variables, context) => {
+    onSuccess: (data, variables, context, mutation) => {
       queryClient.invalidateQueries({ queryKey: taskKeys.lists() });
       queryClient.invalidateQueries({ queryKey: taskKeys.detail(data.id) });
-      options?.onSuccess?.(data, variables, context);
+      options?.onSuccess?.(data, variables, context, mutation);
     },
     ...options,
   });
@@ -94,12 +94,12 @@ export function useDeleteTasks(
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: deleteTasks,
-    onSuccess: (_data, ids, context) => {
+    onSuccess: (data, ids, context, mutation) => {
       queryClient.invalidateQueries({ queryKey: taskKeys.lists() });
       ids.forEach((id) =>
         queryClient.invalidateQueries({ queryKey: taskKeys.detail(id) })
       );
-      options?.onSuccess?.(_data, ids, context);
+      options?.onSuccess?.(data, ids, context, mutation);
     },
     ...options,
   });
@@ -116,12 +116,12 @@ export function useBulkUpdateTasks(
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: ({ ids, data }) => bulkUpdateTasks(ids, data),
-    onSuccess: (data, variables, context) => {
+    onSuccess: (data, variables, context, mutation) => {
       queryClient.invalidateQueries({ queryKey: taskKeys.lists() });
       data.forEach((task) =>
         queryClient.invalidateQueries({ queryKey: taskKeys.detail(task.id) })
       );
-      options?.onSuccess?.(data, variables, context);
+      options?.onSuccess?.(data, variables, context, mutation);
     },
     ...options,
   });
