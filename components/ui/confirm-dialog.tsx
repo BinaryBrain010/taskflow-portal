@@ -103,5 +103,4 @@ export {
   ConfirmDialogPortal,
   ConfirmDialogOverlay,
   ConfirmDialogContent,
-  Dialog as ConfirmDialogDialog,
 };
