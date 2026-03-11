@@ -5,7 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { Menu } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import {
   SheetRoot,
   SheetTrigger,
@@ -89,10 +89,11 @@ export function WorkerShell({
       {/* Top navbar — mobile-first */}
       <header className="sticky top-0 z-40 flex h-14 shrink-0 items-center gap-3 border-b border-border bg-background px-4">
         <SheetRoot open={mobileMenuOpen} onOpenChange={setMobileMenuOpen}>
-          <SheetTrigger>
-            <Button variant="ghost" size="icon" className="md:hidden" aria-label="Open menu">
-              <Menu className="size-5" />
-            </Button>
+          <SheetTrigger
+            className={cn(buttonVariants({ variant: "ghost", size: "icon" }), "md:hidden")}
+            aria-label="Open menu"
+          >
+            <Menu className="size-5" />
           </SheetTrigger>
           <SheetContent side="left" showCloseButton={true} className="flex flex-col p-0">
             <SheetHeader className="border-sidebar-border">

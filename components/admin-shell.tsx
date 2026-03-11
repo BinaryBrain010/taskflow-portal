@@ -5,7 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { LayoutDashboard, ListTodo, Send, Users, PanelLeftClose, PanelLeft } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import {
   SheetRoot,
   SheetTrigger,
@@ -18,7 +18,7 @@ import { clearSession } from "@/lib/auth";
 import { cn } from "@/lib/utils";
 
 const ADMIN_NAV: { href: string; label: string; icon: React.ComponentType<{ className?: string }> }[] = [
-  { href: "/admin", label: "Dashboard", icon: LayoutDashboard },
+  { href: "/admin/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/admin/tasks", label: "Tasks", icon: ListTodo },
   { href: "/admin/submissions", label: "Submissions", icon: Send },
   { href: "/admin/users", label: "Users", icon: Users },
@@ -158,10 +158,11 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
       <div className="flex flex-1 flex-col md:min-w-0">
         <header className="flex h-14 shrink-0 items-center gap-3 border-b border-border bg-background px-4 md:border-l">
           <SheetRoot open={mobileSheetOpen} onOpenChange={setMobileSheetOpen}>
-            <SheetTrigger>
-              <Button variant="ghost" size="icon" className="md:hidden" aria-label="Open menu">
-                <PanelLeft className="size-5" />
-              </Button>
+            <SheetTrigger
+              className={cn(buttonVariants({ variant: "ghost", size: "icon" }), "md:hidden")}
+              aria-label="Open menu"
+            >
+              <PanelLeft className="size-5" />
             </SheetTrigger>
             <SheetContent side="left" showCloseButton={true} className="flex flex-col p-0">
               <SheetHeader className="border-sidebar-border">
