@@ -1,10 +1,30 @@
 import type { Submission } from "@/lib/types";
-import { mockTasks } from "./mockTasks";
 import { workerUsers } from "./mockUsers";
 
 const WORKER_IDS = workerUsers.map((u) => u.id);
-const TASK_IDS = mockTasks.map((t) => t.id);
-const STATUSES: Submission["status"][] = ["pending", "approved", "rejected"];
+
+/** Task IDs that exist in taskService seed (expandSeedForFeed: tsk_0001..tsk_2000) */
+const TASK_IDS = Array.from({ length: 25 }, (_, i) => `tsk_${String(i + 1).padStart(4, "0")}`);
+
+const PROOF_URLS = [
+  "https://example.com/proof/screenshot-1.png",
+  "https://example.com/proof/screenshot-2.png",
+  "https://example.com/proof/evidence.pdf",
+  "https://example.com/proof/result-link.html",
+  "https://example.com/proof/uploaded-file.jpg",
+  "https://example.com/proof/form-response.pdf",
+  "https://example.com/proof/transcription-doc.txt",
+];
+
+const REJECT_NOTES = [
+  "Proof image too blurry.",
+  "Screenshot does not show the required steps.",
+  "Missing required proof for step 2.",
+  "Link is broken or inaccessible.",
+  "Submission does not meet quality guidelines.",
+  "Incomplete; please resubmit with all items.",
+  "Wrong task format submitted.",
+];
 
 function pick<T>(arr: T[]): T {
   return arr[Math.floor(Math.random() * arr.length)]!;
@@ -16,41 +36,70 @@ function randomDate(start: Date, end: Date): string {
   ).toISOString();
 }
 
-const SAMPLE_CONTENT = [
-  "Submitted per instructions. All items completed.",
-  "https://example.com/proof1.png",
-  "Done. I've followed the guidelines.",
-];
-
-function generateSubmission(index: number): Submission {
-  const status = pick(STATUSES);
-  const createdAt = randomDate(
-    new Date("2025-02-01"),
-    new Date("2025-03-10")
-  );
-  const updatedAt = randomDate(new Date(createdAt), new Date("2025-03-10"));
-  const submittedAt = randomDate(new Date(createdAt), new Date(updatedAt));
-  const reviewedAt =
-    status === "approved" || status === "rejected"
-      ? randomDate(new Date(submittedAt), new Date(updatedAt))
-      : null;
-
-  return {
-    id: `sub_${String(index + 1).padStart(4, "0")}`,
-    taskId: pick(TASK_IDS),
-    workerId: pick(WORKER_IDS),
-    status,
-    proofUrls: [pick(SAMPLE_CONTENT)],
-    submittedAt,
-    reviewedAt,
-    reviewNote:
-      status === "approved" || status === "rejected" ? "Reviewed." : null,
-    createdAt,
-    updatedAt,
-  };
+function randomInt(min: number, max: number): number {
+  return Math.floor(Math.random() * (max - min + 1)) + min;
 }
 
-export const mockSubmissions: Submission[] = Array.from(
-  { length: 120 },
-  (_, i) => generateSubmission(i)
-);
+/**
+ * Generates at least 40 realistic submissions:
+ * - taskId spread across mock tasks
+ * - workerId spread across mock workers
+ * - status: ~50% pending, ~30% approved, ~20% rejected
+ * - proofUrls: 1–3 fake URLs
+ * - submittedAt: last 30 days; reviewedAt for approved/rejected; reviewNote for rejected
+ */
+export function generateMockSubmissions(): Submission[] {
+  const now = new Date();
+  const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+  const list: Submission[] = [];
+  let pending = 0;
+  let approved = 0;
+  let rejected = 0;
+  const targetPending = 22;
+  const targetApproved = 13;
+  const targetRejected = 10;
+
+  for (let i = 0; i < 45; i++) {
+    let status: Submission["status"];
+    if (pending < targetPending) {
+      status = "pending";
+      pending++;
+    } else if (approved < targetApproved) {
+      status = "approved";
+      approved++;
+    } else {
+      status = "rejected";
+      rejected++;
+    }
+
+    const submittedAt = randomDate(thirtyDaysAgo, now);
+    const reviewedAt =
+      status === "pending"
+        ? null
+        : randomDate(new Date(submittedAt), now);
+    const updatedAt = reviewedAt ?? submittedAt;
+
+    const numProofs = randomInt(1, 3);
+    const proofUrls = Array.from(
+      { length: numProofs },
+      (_, j) => PROOF_URLS[(i + j) % PROOF_URLS.length]!
+    );
+
+    list.push({
+      id: `sub_${String(i + 1).padStart(4, "0")}`,
+      taskId: TASK_IDS[i % TASK_IDS.length]!,
+      workerId: WORKER_IDS[i % WORKER_IDS.length]!,
+      status,
+      proofUrls,
+      submittedAt,
+      reviewedAt,
+      reviewNote: status === "rejected" ? pick(REJECT_NOTES) : null,
+      createdAt: submittedAt,
+      updatedAt,
+    });
+  }
+
+  return list;
+}
+
+export const mockSubmissions: Submission[] = generateMockSubmissions();

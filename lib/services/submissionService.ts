@@ -3,6 +3,7 @@ import type { SubmissionFilters, CreateSubmissionDTO } from "@/lib/types";
 import { getItem, setItem } from "@/lib/mock/storage";
 import { readDelay, mutationDelay } from "@/lib/mock/delay";
 import { mockUsers } from "@/lib/mock/mockUsers";
+import { mockSubmissions } from "@/lib/mock/mockSubmissions";
 
 const SUBMISSIONS_STORAGE_KEY = "submissions" as const;
 
@@ -25,7 +26,20 @@ interface StoredSubmission {
 function getStored(): StoredSubmission[] {
   const stored = getItem<StoredSubmission[]>(SUBMISSIONS_STORAGE_KEY);
   if (Array.isArray(stored)) return stored;
-  return [];
+  const seed = mockSubmissions.map((s) => ({
+    id: s.id,
+    taskId: s.taskId,
+    workerId: s.workerId,
+    status: s.status,
+    proofUrls: s.proofUrls,
+    submittedAt: s.submittedAt,
+    reviewedAt: s.reviewedAt,
+    reviewNote: s.reviewNote,
+    createdAt: s.createdAt,
+    updatedAt: s.updatedAt,
+  }));
+  setItem(SUBMISSIONS_STORAGE_KEY, seed);
+  return seed;
 }
 
 function getTasksForPopulate(): Task[] {

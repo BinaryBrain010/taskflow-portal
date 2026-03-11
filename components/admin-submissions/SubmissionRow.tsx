@@ -1,13 +1,22 @@
 "use client";
 
 import Link from "next/link";
+import { Check, X } from "lucide-react";
 import type { Submission } from "@/lib/types";
+import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
-const STATUS_STYLES: Record<Submission["status"], string> = {
+export const STATUS_STYLES: Record<Submission["status"], string> = {
   pending: "bg-amber-500/15 text-amber-700 dark:text-amber-400",
   approved: "bg-green-500/15 text-green-700 dark:text-green-400",
   rejected: "bg-destructive/15 text-destructive",
+};
+
+const TYPE_LABELS: Record<string, string> = {
+  survey: "Survey",
+  content_review: "Content Review",
+  data_labeling: "Data Labeling",
+  transcription: "Transcription",
 };
 
 function isImageUrl(url: string): boolean {
@@ -61,7 +70,7 @@ function WorkerAvatar({ name, className }: { name: string; className?: string })
   );
 }
 
-function formatTime(iso: string | null): string {
+export function formatTime(iso: string | null): string {
   if (!iso) return "—";
   const d = new Date(iso);
   const now = new Date();
@@ -76,16 +85,31 @@ interface SubmissionRowProps {
   submission: Submission;
   onClick: () => void;
   isSelected?: boolean;
+  /** Show quick Approve/Reject buttons for pending (grouped view) */
+  onApprove?: (s: Submission) => void;
+  onReject?: (s: Submission) => void;
+  isReviewPending?: boolean;
 }
 
-export function SubmissionRow({ submission, onClick, isSelected }: SubmissionRowProps) {
+export function SubmissionRow({
+  submission,
+  onClick,
+  isSelected,
+  onApprove,
+  onReject,
+  isReviewPending,
+}: SubmissionRowProps) {
   const workerName = submission.worker?.name ?? submission.workerId;
   const taskTitle = submission.task?.title ?? submission.taskId;
+  const isPending = submission.status === "pending";
+  const showActions = isPending && (onApprove != null || onReject != null);
 
   return (
-    <button
-      type="button"
+    <div
+      role="button"
+      tabIndex={0}
       onClick={onClick}
+      onKeyDown={(e) => e.key === "Enter" && onClick()}
       className={cn(
         "flex w-full items-center gap-4 rounded-lg border px-4 py-3 text-left transition-colors",
         "hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
@@ -118,6 +142,52 @@ export function SubmissionRow({ submission, onClick, isSelected }: SubmissionRow
         </div>
       </div>
       <ProofThumbnails urls={submission.proofUrls} />
-    </button>
+      {showActions && (
+        <div className="flex shrink-0 items-center gap-1" onClick={(e) => e.stopPropagation()}>
+          <Button
+            type="button"
+            size="icon"
+            variant="ghost"
+            className="size-8 rounded-full text-green-600 hover:bg-green-500/15 hover:text-green-700"
+            onClick={() => onApprove?.(submission)}
+            disabled={isReviewPending}
+            aria-label="Approve"
+          >
+            <Check className="size-4" />
+          </Button>
+          <Button
+            type="button"
+            size="icon"
+            variant="ghost"
+            className="size-8 rounded-full text-destructive hover:bg-destructive/15"
+            onClick={() => onReject?.(submission)}
+            disabled={isReviewPending}
+            aria-label="Reject"
+          >
+            <X className="size-4" />
+          </Button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Type badge for task type (for group header or table) */
+export function TaskTypeBadge({ type }: { type: string }) {
+  const styles: Record<string, string> = {
+    survey: "bg-indigo-500/15 text-indigo-700 dark:text-indigo-400",
+    content_review: "bg-violet-500/15 text-violet-700 dark:text-violet-400",
+    data_labeling: "bg-orange-500/15 text-orange-700 dark:text-orange-400",
+    transcription: "bg-cyan-500/15 text-cyan-700 dark:text-cyan-400",
+  };
+  return (
+    <span
+      className={cn(
+        "inline-flex rounded-full border border-current/20 px-2.5 py-0.5 text-xs font-medium",
+        styles[type] ?? "bg-muted text-muted-foreground"
+      )}
+    >
+      {TYPE_LABELS[type] ?? type}
+    </span>
   );
 }

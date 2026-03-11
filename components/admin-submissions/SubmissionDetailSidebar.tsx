@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { ExternalLink, ImageIcon, Loader2 } from "lucide-react";
 import type { Submission } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -37,9 +38,22 @@ function isImageUrl(url: string): boolean {
 function ProofPreview({ url }: { url: string }) {
   if (isImageUrl(url)) {
     return (
-      <div className="overflow-hidden rounded-lg border border-border bg-muted">
-        <img src={url} alt="Proof" className="max-h-64 w-full object-contain" />
-      </div>
+      <a
+        href={url}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="flex gap-3 rounded-lg border border-border bg-muted/50 p-2 transition-colors hover:bg-muted"
+      >
+        <div className="flex size-10 shrink-0 items-center justify-center rounded bg-muted">
+          <ImageIcon className="size-5 text-muted-foreground" />
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="overflow-hidden rounded border border-border bg-muted">
+            <img src={url} alt="Proof" className="max-h-40 w-full object-contain" />
+          </div>
+          <span className="mt-1 block truncate break-all text-xs text-primary">{url}</span>
+        </div>
+      </a>
     );
   }
   return (
@@ -47,8 +61,9 @@ function ProofPreview({ url }: { url: string }) {
       href={url}
       target="_blank"
       rel="noopener noreferrer"
-      className="block rounded-lg border border-border bg-muted/50 px-3 py-2 text-sm text-primary break-all hover:underline"
+      className="flex items-center gap-2 rounded-lg border border-border bg-muted/50 px-3 py-2 text-sm text-primary break-all hover:bg-muted hover:underline"
     >
+      <ExternalLink className="size-4 shrink-0 text-muted-foreground" />
       {url}
     </a>
   );
@@ -171,9 +186,6 @@ export function SubmissionDetailSidebar({
               disabled={reviewMutation.isPending}
               className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
             />
-            {reviewMutation.isPending && (
-              <p className="text-sm text-muted-foreground">Submitting review…</p>
-            )}
             {reviewMutation.isError && (
               <p className="text-sm text-destructive">
                 {reviewMutation.error?.message ?? "Review failed."}
@@ -185,14 +197,22 @@ export function SubmissionDetailSidebar({
                 disabled={reviewMutation.isPending}
                 className="bg-green-600 hover:bg-green-700"
               >
-                Approve
+                {reviewMutation.isPending ? (
+                  <Loader2 className="size-4 animate-spin" />
+                ) : (
+                  "Approve"
+                )}
               </Button>
               <Button
                 variant="destructive"
                 onClick={() => handleReview("reject")}
                 disabled={reviewMutation.isPending}
               >
-                Reject
+                {reviewMutation.isPending ? (
+                  <Loader2 className="size-4 animate-spin" />
+                ) : (
+                  "Reject"
+                )}
               </Button>
             </div>
           </section>
