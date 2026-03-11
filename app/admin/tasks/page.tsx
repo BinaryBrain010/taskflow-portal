@@ -29,6 +29,8 @@ import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
+import { SelectDropdown } from "@/components/ui/select-dropdown";
+import { Tooltip } from "@/components/ui/tooltip";
 import {
   ConfirmDialogRoot,
   ConfirmDialogContent,
@@ -56,6 +58,20 @@ const TYPE_LABELS: Record<TaskType, string> = {
   transcription: "Transcription",
 };
 
+const TYPE_BADGE_STYLES: Record<TaskType, string> = {
+  survey: "border border-indigo-300 bg-indigo-500/15 text-indigo-700 dark:text-indigo-300 dark:border-indigo-500/40",
+  content_review: "border border-violet-300 bg-violet-500/15 text-violet-700 dark:text-violet-300 dark:border-violet-500/40",
+  data_labeling: "border border-orange-300 bg-orange-500/15 text-orange-700 dark:text-orange-300 dark:border-orange-500/40",
+  transcription: "border border-cyan-300 bg-cyan-500/15 text-cyan-700 dark:text-cyan-300 dark:border-cyan-500/40",
+};
+
+const STATUS_BADGE_STYLES: Record<TaskStatus, string> = {
+  active: "bg-green-500/15 text-green-700 dark:text-green-400",
+  paused: "bg-amber-500/15 text-amber-700 dark:text-amber-400",
+  closed: "bg-muted text-muted-foreground",
+  draft: "bg-blue-500/15 text-blue-700 dark:text-blue-400",
+};
+
 function formatReward(cents: number): string {
   return `$${(cents / 100).toFixed(2)}`;
 }
@@ -69,10 +85,29 @@ function formatDate(iso: string | null): string {
   });
 }
 
+function EmptyCell() {
+  return <span className="italic text-muted-foreground">—</span>;
+}
+
 function getCampaignName(id: string | null): string {
-  if (!id) return "—";
+  if (!id) return "";
   return mockCampaigns.find((c) => c.id === id)?.name ?? id;
 }
+
+const FILTER_TYPE_OPTIONS = [
+  { value: "all", label: "All" },
+  ...TASK_TYPES.map((t) => ({ value: t.value, label: TYPE_LABELS[t.value] })),
+];
+
+const FILTER_STATUS_OPTIONS = [
+  { value: "all", label: "All" },
+  ...TASK_STATUSES.map((t) => ({ value: t.value, label: t.value.charAt(0).toUpperCase() + t.value.slice(1) })),
+];
+
+const FILTER_CAMPAIGN_OPTIONS = [
+  { value: "", label: "All" },
+  ...mockCampaigns.map((c) => ({ value: c.id, label: c.name })),
+];
 
 const taskFiltersParsers = {
   type: parseAsStringLiteral([
@@ -232,20 +267,29 @@ export default function AdminTasksPage() {
         header: ({ column }) => (
           <SortHeader column={column} label="Type" sorting={sorting} setSort={setSort} />
         ),
-        cell: ({ getValue }) => (
-          <span className="rounded-full bg-primary/15 px-2 py-0.5 text-xs font-medium text-primary">
-            {TYPE_LABELS[getValue() as TaskType]}
-          </span>
-        ),
+        cell: ({ getValue }) => {
+          const type = getValue() as TaskType;
+          return (
+            <span className={cn("inline-flex rounded-full px-2.5 py-1 text-xs font-medium", TYPE_BADGE_STYLES[type])}>
+              {TYPE_LABELS[type]}
+            </span>
+          );
+        },
       },
       {
         accessorKey: "status",
         header: ({ column }) => (
           <SortHeader column={column} label="Status" sorting={sorting} setSort={setSort} />
         ),
-        cell: ({ getValue }) => (
-          <span className="capitalize text-muted-foreground">{(getValue() as string) ?? "—"}</span>
-        ),
+        cell: ({ getValue }) => {
+          const status = getValue() as TaskStatus | undefined;
+          if (status == null) return <EmptyCell />;
+          return (
+            <span className={cn("inline-flex rounded-full px-2.5 py-1 text-xs font-medium capitalize", STATUS_BADGE_STYLES[status])}>
+              {status}
+            </span>
+          );
+        },
       },
       {
         accessorKey: "reward",
@@ -253,7 +297,7 @@ export default function AdminTasksPage() {
           <SortHeader column={column} label="Reward" sorting={sorting} setSort={setSort} />
         ),
         cell: ({ getValue }) => (
-          <span className="font-medium text-primary">{formatReward((getValue() as number) ?? 0)}</span>
+          <span className="font-medium text-green-700 dark:text-green-400">{formatReward((getValue() as number) ?? 0)}</span>
         ),
       },
       {
@@ -285,54 +329,70 @@ export default function AdminTasksPage() {
         header: ({ column }) => (
           <SortHeader column={column} label="Campaign" sorting={sorting} setSort={setSort} />
         ),
-        cell: ({ getValue }) => (
-          <span className="text-muted-foreground line-clamp-1 max-w-[120px]">
-            {getCampaignName(getValue() as string | null)}
-          </span>
-        ),
+        cell: ({ getValue }) => {
+          const id = getValue() as string | null;
+          const name = getCampaignName(id);
+          if (!name) return <EmptyCell />;
+          const display = name.length > 18 ? `${name.slice(0, 18)}…` : name;
+          return (
+            <Tooltip content={name} side="top">
+              <span className="text-muted-foreground line-clamp-1 max-w-[120px] cursor-default">
+                {display}
+              </span>
+            </Tooltip>
+          );
+        },
       },
       {
         accessorKey: "expiresAt",
         header: ({ column }) => (
           <SortHeader column={column} label="Expires" sorting={sorting} setSort={setSort} />
         ),
-        cell: ({ getValue }) => (
-          <span className="text-muted-foreground text-sm">{formatDate(getValue() as string | null)}</span>
-        ),
+        cell: ({ getValue }) => {
+          const iso = getValue() as string | null;
+          if (!iso) return <EmptyCell />;
+          return <span className="text-muted-foreground text-sm">{formatDate(iso)}</span>;
+        },
       },
       {
         id: "actions",
         header: () => <span className="text-muted-foreground">Actions</span>,
         cell: ({ row }) => (
-          <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
-            <Link
-              href={`/admin/tasks/${row.original.id}/edit`}
-              className={buttonVariants({ variant: "ghost", size: "icon" }) + " size-8"}
-              aria-label="Edit"
-            >
-              <Pencil className="size-4" />
-            </Link>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="size-8 text-destructive hover:text-destructive"
-              onClick={() => {
-                setDeleteTargetIds([row.original.id]);
-                setDeleteConfirmOpen(true);
-              }}
-              aria-label="Delete"
-            >
-              <Trash2 className="size-4" />
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="size-8"
-              onClick={() => row.toggleExpanded()}
-              aria-label="View submissions"
-            >
-              <ListChecks className="size-4" />
-            </Button>
+          <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
+            <Tooltip content="Edit" side="top">
+              <Link
+                href={`/admin/tasks/${row.original.id}/edit`}
+                className={cn(buttonVariants({ variant: "ghost", size: "icon" }), "size-8 rounded-full hover:bg-muted")}
+                aria-label="Edit"
+              >
+                <Pencil className="size-4" />
+              </Link>
+            </Tooltip>
+            <Tooltip content="Delete" side="top">
+              <Button
+                variant="ghost"
+                size="icon"
+                className="size-8 rounded-full text-destructive hover:bg-destructive/10 hover:text-destructive"
+                onClick={() => {
+                  setDeleteTargetIds([row.original.id]);
+                  setDeleteConfirmOpen(true);
+                }}
+                aria-label="Delete"
+              >
+                <Trash2 className="size-4" />
+              </Button>
+            </Tooltip>
+            <Tooltip content="View Submissions" side="top">
+              <Button
+                variant="ghost"
+                size="icon"
+                className="size-8 rounded-full hover:bg-muted"
+                onClick={() => row.toggleExpanded()}
+                aria-label="View submissions"
+              >
+                <ListChecks className="size-4" />
+              </Button>
+            </Tooltip>
           </div>
         ),
         size: 140,
@@ -417,80 +477,65 @@ export default function AdminTasksPage() {
       </div>
 
       {/* Filters */}
-      <div className="rounded-lg border border-border bg-card p-4">
+      <div className="rounded-xl border border-border bg-card p-4">
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
           <div>
-            <Label htmlFor="filter-type">Type</Label>
-            <select
-              id="filter-type"
+            <Label htmlFor="filter-type" className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Type</Label>
+            <SelectDropdown.Root
               value={params.type}
-              onChange={(e) =>
-                setParams({ type: e.target.value as typeof params.type, page: 1 })
-              }
-              className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+              onValueChange={(v) => setParams({ type: v as typeof params.type, page: 1 })}
+              options={FILTER_TYPE_OPTIONS}
+              placeholder="All"
+              className="mt-1.5"
             >
-              <option value="all">All</option>
-              {TASK_TYPES.map(({ value }) => (
-                <option key={value} value={value}>
-                  {TYPE_LABELS[value]}
-                </option>
-              ))}
-            </select>
+              <SelectDropdown.Trigger />
+              <SelectDropdown.Content />
+            </SelectDropdown.Root>
           </div>
           <div>
-            <Label htmlFor="filter-status">Status</Label>
-            <select
-              id="filter-status"
+            <Label htmlFor="filter-status" className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Status</Label>
+            <SelectDropdown.Root
               value={params.status}
-              onChange={(e) =>
-                setParams({ status: e.target.value as typeof params.status, page: 1 })
-              }
-              className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+              onValueChange={(v) => setParams({ status: v as typeof params.status, page: 1 })}
+              options={FILTER_STATUS_OPTIONS}
+              placeholder="All"
+              className="mt-1.5"
             >
-              <option value="all">All</option>
-              {TASK_STATUSES.map(({ value }) => (
-                <option key={value} value={value}>
-                  {value}
-                </option>
-              ))}
-            </select>
+              <SelectDropdown.Trigger />
+              <SelectDropdown.Content />
+            </SelectDropdown.Root>
           </div>
           <div>
-            <Label htmlFor="filter-campaign">Campaign</Label>
-            <select
-              id="filter-campaign"
+            <Label htmlFor="filter-campaign" className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Campaign</Label>
+            <SelectDropdown.Root
               value={params.campaignId}
-              onChange={(e) =>
-                setParams({ campaignId: e.target.value, page: 1 })
-              }
-              className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+              onValueChange={(v) => setParams({ campaignId: v, page: 1 })}
+              options={FILTER_CAMPAIGN_OPTIONS}
+              placeholder="All"
+              className="mt-1.5"
             >
-              <option value="">All</option>
-              {mockCampaigns.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
-                </option>
-              ))}
-            </select>
+              <SelectDropdown.Trigger showSearchIcon />
+              <SelectDropdown.Content />
+            </SelectDropdown.Root>
           </div>
           <div>
-            <Label htmlFor="filter-from">Expires from</Label>
+            <Label htmlFor="filter-from" className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Expires from</Label>
             <Input
               id="filter-from"
               type="date"
               value={params.expiresFrom}
               onChange={(e) => setParams({ expiresFrom: e.target.value, page: 1 })}
-              className="mt-1"
+              className="mt-1.5 h-9 rounded-lg"
             />
           </div>
           <div>
-            <Label htmlFor="filter-to">Expires to</Label>
+            <Label htmlFor="filter-to" className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Expires to</Label>
             <Input
               id="filter-to"
               type="date"
               value={params.expiresTo}
               onChange={(e) => setParams({ expiresTo: e.target.value, page: 1 })}
-              className="mt-1"
+              className="mt-1.5 h-9 rounded-lg"
             />
           </div>
         </div>
@@ -544,7 +589,7 @@ export default function AdminTasksPage() {
       )}
       {!isLoading && !error && (
         <>
-          <div className="overflow-x-auto rounded-lg border border-border bg-card">
+          <div className="overflow-x-auto rounded-xl border border-border bg-card">
             <table className="w-full min-w-[900px] border-collapse">
               <thead>
                 {table.getHeaderGroups().map((headerGroup) => (
@@ -552,7 +597,7 @@ export default function AdminTasksPage() {
                     {headerGroup.headers.map((header) => (
                       <th
                         key={header.id}
-                        className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wide text-muted-foreground"
+                        className="px-4 py-3.5 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground"
                         style={{ width: header.getSize() }}
                       >
                         {flexRender(header.column.columnDef.header, header.getContext())}
@@ -574,14 +619,14 @@ export default function AdminTasksPage() {
                       <tr
                         onClick={() => row.toggleExpanded()}
                         className={cn(
-                          "border-b border-border transition-colors hover:bg-muted/30 cursor-pointer",
+                          "border-b border-border/80 transition-colors cursor-pointer hover:bg-muted/40",
                           row.getIsSelected() && "bg-primary/5"
                         )}
                       >
                         {row.getVisibleCells().map((cell) => (
                           <td
                             key={cell.id}
-                            className="px-4 py-3 text-sm"
+                            className="px-4 py-4 text-sm"
                             style={{ width: cell.column.getSize() }}
                           >
                             {flexRender(cell.column.columnDef.cell, cell.getContext())}
@@ -613,7 +658,7 @@ export default function AdminTasksPage() {
                 onChange={(e) =>
                   setParams({ pageSize: Number(e.target.value), page: 1 })
                 }
-                className="rounded-md border border-input bg-background px-2 py-1 text-sm"
+                className="h-9 rounded-lg border border-input bg-background px-2 py-1 text-sm"
               >
                 {PAGE_SIZES.map((n) => (
                   <option key={n} value={n}>
@@ -706,7 +751,7 @@ export default function AdminTasksPage() {
                   id="bulk-campaign"
                   value={bulkCampaignId}
                   onChange={(e) => setBulkCampaignId(e.target.value)}
-                  className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                  className="mt-1 h-9 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm"
                 >
                   <option value="">None</option>
                   {mockCampaigns.map((c) => (
