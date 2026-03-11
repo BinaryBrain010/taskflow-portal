@@ -40,6 +40,10 @@ export interface TaskFilters {
   type?: TaskType | TaskType[];
   campaignId?: string;
   search?: string;
+  /** ISO date string; task.expiresAt >= expiresFrom */
+  expiresFrom?: string | null;
+  /** ISO date string; task.expiresAt <= expiresTo */
+  expiresTo?: string | null;
 }
 
 /** DTO for creating a task (filledSlots defaults to 0) */

@@ -1,6 +1,6 @@
 import type { Submission } from "@/lib/types";
 import { getItem, setItem } from "@/lib/mock/storage";
-import { mutationDelay } from "@/lib/mock/delay";
+import { readDelay, mutationDelay } from "@/lib/mock/delay";
 
 const SUBMISSIONS_STORAGE_KEY = "submissions" as const;
 
@@ -44,4 +44,13 @@ export async function createSubmission(dto: CreateSubmissionDTO): Promise<Submis
   list.push(submission);
   setItem(SUBMISSIONS_STORAGE_KEY, list);
   return submission;
+}
+
+/**
+ * Get submissions for a task. 1–3s delay.
+ */
+export async function getSubmissionsByTaskId(taskId: string): Promise<Submission[]> {
+  await readDelay();
+  const list = getSubmissionsFromStorage();
+  return list.filter((s) => s.taskId === taskId);
 }
