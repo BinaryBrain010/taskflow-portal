@@ -162,7 +162,7 @@ export default function FeedPage() {
             </div>
           )}
           {!isLoading && !error && sortedTasks.length > 0 && (
-            <div ref={scrollParentRef} className="flex-1 overflow-auto">
+            <div ref={scrollParentRef} className="flex-1 overflow-auto overflow-x-hidden">
               <div
                 style={{
                   height: `${virtualizer.getTotalSize()}px`,
