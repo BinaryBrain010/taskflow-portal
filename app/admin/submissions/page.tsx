@@ -3,13 +3,13 @@
 import React, { useMemo, useRef, useState, useEffect, useCallback } from "react";
 import { useQueryStates, parseAsStringLiteral, parseAsString } from "nuqs";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { ChevronDown, ChevronRight, X, Check, Loader2 } from "lucide-react";
+import { ChevronDown, ChevronUp, ChevronRight, X, Check, Loader2, Search } from "lucide-react";
 import Link from "next/link";
 import type { Submission, SubmissionStatus } from "@/lib/types";
 import { useSubmissionsQuery, useReviewSubmission } from "@/hooks/useSubmissions";
 import { useTasksQuery } from "@/hooks/useTasks";
 import { useIsMobile } from "@/hooks/useIsMobile";
-import { SubmissionRow, STATUS_STYLES, formatTime, TaskTypeBadge } from "@/components/admin-submissions/SubmissionRow";
+import { STATUS_STYLES, formatTime, TaskTypeBadge } from "@/components/admin-submissions/SubmissionRow";
 import { SubmissionDetailSidebar } from "@/components/admin-submissions/SubmissionDetailSidebar";
 import { SubmissionsEmptyState } from "@/components/admin-submissions/SubmissionsEmptyState";
 import { TaskSearchSelect } from "@/components/admin-submissions/TaskSearchSelect";
@@ -23,7 +23,7 @@ import {
   SheetBody,
 } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
-import { Label } from "@/components/ui/label";
+import { Tooltip } from "@/components/ui/tooltip";
 import { mockUsers } from "@/lib/mock/mockUsers";
 import { useQueryClient } from "@tanstack/react-query";
 import { submissionKeys } from "@/hooks/useSubmissions";
@@ -57,7 +57,7 @@ const parsers = {
   sort: parseAsStringLiteral(["newest", "oldest"] as const).withDefault("newest"),
 };
 
-const ROW_HEIGHT = 56;
+const ROW_HEIGHT = 40;
 const OVERSCAN = 5;
 const workerUsers = mockUsers.filter((u) => u.role === "worker");
 const WORKER_OPTIONS = [
@@ -69,6 +69,13 @@ const TAB_BADGE_STYLES: Record<string, string> = {
   pending: "bg-amber-500/15 text-amber-700 dark:text-amber-400",
   approved: "bg-green-500/15 text-green-700 dark:text-green-400",
   rejected: "bg-destructive/15 text-destructive",
+};
+
+const TYPE_BORDER_COLORS: Record<string, string> = {
+  survey: "border-l-indigo-500",
+  content_review: "border-l-violet-500",
+  data_labeling: "border-l-orange-500",
+  transcription: "border-l-cyan-500",
 };
 
 function WorkerAvatar({ name, className }: { name: string; className?: string }) {
@@ -85,11 +92,20 @@ function WorkerAvatar({ name, className }: { name: string; className?: string })
   );
 }
 
+function matchesSearch(s: Submission, q: string): boolean {
+  if (!q.trim()) return true;
+  const lower = q.trim().toLowerCase();
+  const worker = (s.worker?.name ?? s.workerId ?? "").toLowerCase();
+  const taskTitle = (s.task?.title ?? s.taskId ?? "").toLowerCase();
+  return worker.includes(lower) || taskTitle.includes(lower) || s.id.toLowerCase().includes(lower);
+}
+
 export default function AdminSubmissionsPage() {
   const [params, setParams] = useQueryStates(parsers);
   const [selected, setSelected] = useState<Submission | null>(null);
   const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
   const [collapsedTasks, setCollapsedTasks] = useState<Set<string>>(new Set());
+  const [searchQuery, setSearchQuery] = useState("");
   const isMobile = useIsMobile();
   const scrollRef = useRef<HTMLDivElement>(null);
   const queryClient = useQueryClient();
@@ -133,9 +149,14 @@ export default function AdminSubmissionsPage() {
     return copy;
   }, [submissions, params.sort]);
 
+  const filteredSorted = useMemo(
+    () => (searchQuery.trim() ? sorted.filter((s) => matchesSearch(s, searchQuery)) : sorted),
+    [sorted, searchQuery]
+  );
+
   const grouped = useMemo(() => {
     const map = new Map<string, Submission[]>();
-    for (const s of sorted) {
+    for (const s of filteredSorted) {
       const list = map.get(s.taskId) ?? [];
       list.push(s);
       map.set(s.taskId, list);
@@ -146,9 +167,9 @@ export default function AdminSubmissionsPage() {
       taskType: list[0]?.task?.type,
       submissions: list,
     }));
-  }, [sorted]);
+  }, [filteredSorted]);
 
-  const flatItems = sorted;
+  const flatItems = filteredSorted;
 
   const hasActiveFilters =
     params.taskId !== "" ||
@@ -159,6 +180,9 @@ export default function AdminSubmissionsPage() {
   const clearFilters = () => {
     setParams({ taskId: "", workerId: "", dateFrom: "", dateTo: "" });
   };
+
+  const expandAll = () => setCollapsedTasks(new Set());
+  const collapseAll = () => setCollapsedTasks(new Set(grouped.map((g) => g.taskId)));
 
   const handleReviewed = useCallback(
     (submission: Submission) => {
@@ -220,139 +244,176 @@ export default function AdminSubmissionsPage() {
 
   const detailOpen = !!selected;
 
+  const [searchFocused, setSearchFocused] = useState(false);
+
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-6">
-      <h1 className="font-display text-2xl font-semibold tracking-tight text-foreground">
-        Submissions
-      </h1>
-
-      {/* Row 1: Status tabs (pill style with count badges) */}
-      <div className="flex flex-wrap gap-2" role="tablist" aria-label="Status">
-        {STATUS_TABS.map(({ value, label }) => {
-          const count =
-            value === "all" ? undefined : statusCounts[value as keyof typeof statusCounts];
-          const isSelected = params.status === value;
-          return (
-            <button
-              key={value}
-              type="button"
-              role="tab"
-              aria-selected={isSelected}
-              onClick={() => setParams({ status: value })}
-              className={cn(
-                "inline-flex min-h-[40px] shrink-0 items-center gap-2 rounded-full border px-4 py-2 text-sm font-medium transition-colors",
-                isSelected
-                  ? "border-primary bg-primary text-primary-foreground"
-                  : "border-border bg-card text-muted-foreground hover:border-muted-foreground/50 hover:bg-muted/50 hover:text-foreground"
-              )}
-            >
-              <span>{label}</span>
-              {count !== undefined && (
-                <span
-                  className={cn(
-                    "rounded-full px-2 py-0.5 text-xs font-semibold",
-                    isSelected ? "bg-primary-foreground/20" : TAB_BADGE_STYLES[value] ?? "bg-muted"
-                  )}
-                >
-                  {count}
-                </span>
-              )}
-            </button>
-          );
-        })}
-      </div>
-
-      {/* Row 2: View toggle | Sort | Clear filters */}
-      <div className="flex flex-wrap items-center gap-3 rounded-xl border border-border bg-card p-4">
-        <div className="flex items-center gap-2">
-          <span className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-            View
-          </span>
-          <div className="flex rounded-lg border border-border bg-muted/30 p-0.5">
-            {VIEW_MODES.map(({ value, label }) => (
+    <div className="flex min-h-0 flex-1 flex-col gap-3 px-2">
+      {/* Header: title + divider + status tabs (same row) */}
+      <div className="flex flex-wrap items-center gap-3 border-b border-border pb-2">
+        <h1 className="font-display text-xl font-semibold tracking-tight text-foreground">
+          Submissions
+        </h1>
+        <div className="h-4 w-px shrink-0 bg-border" aria-hidden />
+        <div className="flex flex-wrap items-center gap-1.5" role="tablist" aria-label="Status">
+          {STATUS_TABS.map(({ value, label }) => {
+            const count =
+              value === "all" ? undefined : statusCounts[value as keyof typeof statusCounts];
+            const isSelected = params.status === value;
+            return (
               <button
                 key={value}
                 type="button"
-                onClick={() => setParams({ view: value })}
+                role="tab"
+                aria-selected={isSelected}
+                onClick={() => setParams({ status: value })}
                 className={cn(
-                  "rounded-md px-3 py-1.5 text-sm font-medium transition-colors",
-                  params.view === value
-                    ? "bg-background text-foreground shadow-sm"
-                    : "text-muted-foreground hover:text-foreground"
+                  "inline-flex h-7 shrink-0 items-center gap-1.5 rounded-full border px-2.5 py-1 text-sm transition-colors",
+                  isSelected
+                    ? "border-primary bg-primary text-primary-foreground"
+                    : "border-border bg-card text-muted-foreground hover:bg-muted/50 hover:text-foreground"
                 )}
               >
-                {label}
+                <span>{label}</span>
+                {count !== undefined && (
+                  <span
+                    className={cn(
+                      "flex size-4 items-center justify-center rounded-full text-[10px] font-semibold",
+                      isSelected ? "bg-primary-foreground/25" : TAB_BADGE_STYLES[value] ?? "bg-muted"
+                    )}
+                  >
+                    {count}
+                  </span>
+                )}
               </button>
-            ))}
-          </div>
+            );
+          })}
         </div>
-        <div className="flex items-center gap-2">
-          <Label className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-            Sort
-          </Label>
-          <SelectDropdown.Root
-            value={params.sort}
-            onValueChange={(v) => setParams({ sort: v as "newest" | "oldest" })}
-            options={SORT_OPTIONS}
-            placeholder="Sort"
-          >
-            <SelectDropdown.Trigger />
-            <SelectDropdown.Content />
-          </SelectDropdown.Root>
-        </div>
-        {hasActiveFilters && (
-          <Button variant="ghost" size="sm" onClick={clearFilters} className="ml-auto text-muted-foreground">
-            Clear filters
-          </Button>
-        )}
       </div>
 
-      {/* Row 3: Task | Worker | From | To */}
-      <div className="grid gap-4 rounded-xl border border-border bg-card p-4 sm:grid-cols-2 lg:grid-cols-4">
-        <div className="space-y-1.5">
-          <Label className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-            Task
-          </Label>
-          <TaskSearchSelect
-            value={params.taskId}
-            onChange={(v) => setParams({ taskId: v })}
-            tasks={tasks}
-          />
+      {/* Single filter bar: Expand/Collapse | View | Sort | Task | Worker | From | To | Search | Clear */}
+      <div className="flex flex-wrap items-center gap-2 border-b border-border py-2">
+        {params.view === "grouped" && grouped.length > 0 && (
+          <>
+            <button
+              type="button"
+              onClick={expandAll}
+              className="text-xs text-muted-foreground hover:text-foreground"
+            >
+              Expand all
+            </button>
+            <span className="text-xs text-muted-foreground">·</span>
+            <button
+              type="button"
+              onClick={collapseAll}
+              className="text-xs text-muted-foreground hover:text-foreground"
+            >
+              Collapse all
+            </button>
+            <span className="mr-1 w-px self-stretch bg-border" aria-hidden />
+          </>
+        )}
+        <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+          View
+        </span>
+        <div className="flex rounded border border-border bg-muted/30 p-0.5">
+          {VIEW_MODES.map(({ value, label }) => (
+            <button
+              key={value}
+              type="button"
+              onClick={() => setParams({ view: value })}
+              className={cn(
+                "rounded px-2 py-1 text-xs font-medium transition-colors",
+                params.view === value
+                  ? "bg-background text-foreground shadow-sm"
+                  : "text-muted-foreground hover:text-foreground"
+              )}
+            >
+              {label}
+            </button>
+          ))}
         </div>
-        <div className="space-y-1.5">
-          <Label className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-            Worker
-          </Label>
-          <SelectDropdown.Root
-            value={params.workerId}
-            onValueChange={(v) => setParams({ workerId: v })}
-            options={WORKER_OPTIONS}
-            placeholder="All workers"
-          >
-            <SelectDropdown.Trigger />
-            <SelectDropdown.Content />
-          </SelectDropdown.Root>
-        </div>
-        <div className="space-y-1.5">
-          <Label className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-            From
-          </Label>
+        <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+          Sort
+        </span>
+        <SelectDropdown.Root
+          value={params.sort}
+          onValueChange={(v) => setParams({ sort: v as "newest" | "oldest" })}
+          options={SORT_OPTIONS}
+          placeholder="Sort"
+        >
+          <SelectDropdown.Trigger className="h-8 min-w-[100px] rounded border border-input px-2 text-xs" />
+          <SelectDropdown.Content />
+        </SelectDropdown.Root>
+        <TaskSearchSelect
+          value={params.taskId}
+          onChange={(v) => setParams({ taskId: v })}
+          tasks={tasks}
+          placeholder="All tasks"
+          className="[&_button]:h-8 [&_button]:min-w-[100px] [&_button]:rounded [&_button]:px-2 [&_button]:text-xs"
+        />
+        <SelectDropdown.Root
+          value={params.workerId}
+          onValueChange={(v) => setParams({ workerId: v })}
+          options={WORKER_OPTIONS}
+          placeholder="All workers"
+        >
+          <SelectDropdown.Trigger className="h-8 min-w-[100px] rounded border border-input px-2 text-xs" />
+          <SelectDropdown.Content />
+        </SelectDropdown.Root>
+        <div className="[&_button]:h-8 [&_button]:min-w-[72px] [&_button]:rounded [&_button]:px-2 [&_button]:text-xs">
           <FilterDatePicker
             value={params.dateFrom}
             onChange={(v) => setParams({ dateFrom: v })}
-            placeholder="From date"
+            placeholder="From"
           />
         </div>
-        <div className="space-y-1.5">
-          <Label className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-            To
-          </Label>
+        <div className="[&_button]:h-8 [&_button]:min-w-[72px] [&_button]:rounded [&_button]:px-2 [&_button]:text-xs">
           <FilterDatePicker
             value={params.dateTo}
             onChange={(v) => setParams({ dateTo: v })}
-            placeholder="To date"
+            placeholder="To"
           />
         </div>
+        <div
+          className={cn(
+            "relative flex items-center transition-[width]",
+            searchFocused || searchQuery ? "w-36" : "w-8"
+          )}
+        >
+          <Search className="pointer-events-none absolute left-2 size-3.5 text-muted-foreground" />
+          <input
+            type="search"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            onFocus={() => setSearchFocused(true)}
+            onBlur={() => setSearchFocused(false)}
+            placeholder="Search…"
+            aria-label="Search submissions by worker or task"
+            className={cn(
+              "h-8 w-full rounded border border-input bg-background pl-7 pr-6 text-xs placeholder:text-muted-foreground",
+              "focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+            )}
+          />
+          {searchQuery && (
+            <button
+              type="button"
+              onClick={() => setSearchQuery("")}
+              aria-label="Clear search"
+              className="absolute right-1.5 rounded p-0.5 text-muted-foreground hover:bg-muted hover:text-foreground"
+            >
+              <X className="size-3" />
+            </button>
+          )}
+        </div>
+        {hasActiveFilters && (
+          <button
+            type="button"
+            onClick={clearFilters}
+            className="text-xs text-muted-foreground hover:text-foreground"
+          >
+            Clear filters
+          </button>
+        )}
       </div>
 
       {toast && (
@@ -384,54 +445,131 @@ export default function AdminSubmissionsPage() {
         <div className="flex min-h-0 flex-1 gap-0">
           <div className="min-w-0 flex-1">
             {params.view === "grouped" ? (
-              <div className="space-y-2 overflow-y-auto pr-2">
+              <div className="overflow-y-auto pr-1">
                 {grouped.length === 0 ? (
                   <SubmissionsEmptyState statusFilter={params.status} className="flex-1" />
                 ) : (
-                  grouped.map(({ taskId, taskTitle, taskType, submissions: list }) => {
+                  <div className="space-y-0">
+                  {grouped.map(({ taskId, taskTitle, taskType, submissions: list }) => {
                     const isExpanded = !collapsedTasks.has(taskId);
+                    const borderColor = taskType != null ? TYPE_BORDER_COLORS[taskType] : "";
                     return (
                       <div
                         key={taskId}
-                        className="overflow-hidden rounded-xl border border-border bg-card"
+                        className={cn(
+                          "overflow-hidden border-b border-border bg-card last:border-b-0",
+                          isExpanded && taskType != null && "border-l-2",
+                          isExpanded && borderColor
+                        )}
                       >
                         <button
                           type="button"
                           onClick={() => toggleTask(taskId)}
-                          className="flex w-full items-center gap-3 border-b border-border bg-muted/30 px-4 py-3 text-left hover:bg-muted/50"
+                          className="flex w-full items-center gap-2 px-3 py-2 text-left hover:bg-muted/40"
                         >
                           {isExpanded ? (
-                            <ChevronDown className="size-4 shrink-0 text-muted-foreground" />
+                            <ChevronDown className="size-3.5 shrink-0 text-muted-foreground" />
                           ) : (
-                            <ChevronRight className="size-4 shrink-0 text-muted-foreground" />
+                            <ChevronRight className="size-3.5 shrink-0 text-muted-foreground" />
                           )}
-                          <span className="min-w-0 flex-1 truncate font-medium text-foreground">
+                          <span className="min-w-0 flex-1 truncate text-sm font-medium text-foreground">
                             {taskTitle}
                           </span>
-                          {taskType != null && <TaskTypeBadge type={taskType} />}
-                          <span className="rounded-full bg-muted px-2.5 py-0.5 text-xs font-medium text-muted-foreground">
-                            {list.length}
+                          {taskType != null && (
+                            <span className={cn(
+                              "rounded border border-current/20 px-2 py-0.5 text-xs font-medium",
+                              taskType === "survey" && "bg-indigo-500/10 text-indigo-700 dark:text-indigo-400",
+                              taskType === "content_review" && "bg-violet-500/10 text-violet-700 dark:text-violet-400",
+                              taskType === "data_labeling" && "bg-orange-500/10 text-orange-700 dark:text-orange-400",
+                              taskType === "transcription" && "bg-cyan-500/10 text-cyan-700 dark:text-cyan-400"
+                            )}>
+                              {taskType === "survey" && "Survey"}
+                              {taskType === "content_review" && "Content Review"}
+                              {taskType === "data_labeling" && "Data Labeling"}
+                              {taskType === "transcription" && "Transcription"}
+                            </span>
+                          )}
+                          <span className="text-xs text-muted-foreground">
+                            {list.length} submission{list.length !== 1 ? "s" : ""}
                           </span>
                         </button>
                         {isExpanded && (
-                          <div className="divide-y divide-border/80">
-                            {list.map((s) => (
-                              <div key={s.id} className="p-2">
-                                <SubmissionRow
-                                  submission={s}
-                                  onClick={() => setSelected(s)}
-                                  isSelected={selected?.id === s.id}
-                                  onApprove={handleQuickApprove}
-                                  onReject={handleQuickReject}
-                                  isReviewPending={reviewMutation.isPending}
-                                />
+                          <div className="border-t border-border/60">
+                            {list.map((s, idx) => (
+                              <div
+                                key={s.id}
+                                role="button"
+                                tabIndex={0}
+                                onClick={() => setSelected(s)}
+                                onKeyDown={(e) => e.key === "Enter" && setSelected(s)}
+                                className={cn(
+                                  "grid grid-cols-[1fr_auto_auto_auto_auto] items-center gap-2 py-1.5 pl-6 pr-2 transition-colors hover:bg-muted/30",
+                                  selected?.id === s.id && "bg-primary/5",
+                                  idx % 2 === 1 && "bg-muted/20"
+                                )}
+                              >
+                                <div className="flex min-w-0 items-center gap-2">
+                                  <WorkerAvatar name={s.worker?.name ?? s.workerId} className="size-6" />
+                                  <span className="truncate text-sm font-medium text-foreground">
+                                    {s.worker?.name ?? s.workerId}
+                                  </span>
+                                </div>
+                                <span
+                                  className={cn(
+                                    "w-fit rounded px-1.5 py-0.5 text-[10px] font-medium capitalize",
+                                    STATUS_STYLES[s.status]
+                                  )}
+                                >
+                                  {s.status}
+                                </span>
+                                <span className="text-xs text-muted-foreground whitespace-nowrap">
+                                  {formatTime(s.submittedAt)}
+                                </span>
+                                <span className="text-xs text-muted-foreground">
+                                  {s.proofUrls.length} proof{s.proofUrls.length !== 1 ? "s" : ""}
+                                </span>
+                                <div className="flex items-center gap-0.5" onClick={(e) => e.stopPropagation()}>
+                                  {s.status === "pending" ? (
+                                    <>
+                                      <Tooltip content="Approve">
+                                        <Button
+                                          type="button"
+                                          size="icon"
+                                          variant="ghost"
+                                          className="size-7 rounded-full text-green-600 hover:bg-green-500/15"
+                                          onClick={() => handleQuickApprove(s)}
+                                          disabled={reviewMutation.isPending}
+                                          aria-label="Approve"
+                                        >
+                                          <Check className="size-3.5" />
+                                        </Button>
+                                      </Tooltip>
+                                      <Tooltip content="Reject">
+                                        <Button
+                                          type="button"
+                                          size="icon"
+                                          variant="ghost"
+                                          className="size-7 rounded-full text-destructive hover:bg-destructive/15"
+                                          onClick={() => handleQuickReject(s)}
+                                          disabled={reviewMutation.isPending}
+                                          aria-label="Reject"
+                                        >
+                                          <X className="size-3.5" />
+                                        </Button>
+                                      </Tooltip>
+                                    </>
+                                  ) : (
+                                    <span className="w-14 text-[10px] text-muted-foreground">—</span>
+                                  )}
+                                </div>
                               </div>
                             ))}
                           </div>
                         )}
                       </div>
                     );
-                  })
+                  })}
+                  </div>
                 )}
               </div>
             ) : (
@@ -441,7 +579,7 @@ export default function AdminSubmissionsPage() {
                 ) : (
                   <>
                     {/* Table header */}
-                    <div className="sticky top-0 z-10 grid grid-cols-[1fr_1fr_100px_100px_100px_60px_80px] gap-2 border-b border-border bg-card px-4 py-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                    <div className="sticky top-0 z-10 grid grid-cols-[1fr_1fr_80px_80px_80px_48px_64px] gap-2 border-b border-border bg-card px-3 py-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
                       <span>Worker</span>
                       <span>Task</span>
                       <span>Type</span>
@@ -470,15 +608,16 @@ export default function AdminSubmissionsPage() {
           {!isMobile && detailOpen && selected && (
             <aside className="hidden w-full max-w-[min(24rem,90vw)] shrink-0 border-l border-border bg-card md:block">
               <div className="flex h-full flex-col">
-                <div className="flex items-center justify-between border-b border-border p-4">
-                  <h2 className="font-display text-lg font-semibold text-foreground">Submission</h2>
+                <div className="flex items-center justify-between border-b border-border px-3 py-2">
+                  <h2 className="font-display text-base font-semibold text-foreground">Submission</h2>
                   <Button
                     variant="ghost"
                     size="icon"
+                    className="size-8"
                     onClick={() => setSelected(null)}
                     aria-label="Close"
                   >
-                    <X className="size-4" />
+                    <X className="size-3.5" />
                   </Button>
                 </div>
                 <div className="min-h-0 flex-1 overflow-hidden">
@@ -503,7 +642,7 @@ export default function AdminSubmissionsPage() {
       {isMobile && (
         <SheetRoot open={detailOpen} onOpenChange={(open) => !open && setSelected(null)}>
           <SheetContent side="bottom" showCloseButton className="max-h-[85vh] flex flex-col p-0">
-            <SheetHeader className="shrink-0 border-b border-border p-4">
+            <SheetHeader className="shrink-0 border-b border-border px-3 py-2">
               <SheetTitle>Submission</SheetTitle>
             </SheetHeader>
             <SheetBody className="min-h-0 flex-1 overflow-auto">
@@ -578,13 +717,13 @@ function VirtualizedFlatList({
               transform: `translateY(${virtualRow.start}px)`,
             }}
             className={cn(
-              "grid cursor-pointer grid-cols-[1fr_1fr_100px_100px_100px_60px_80px] items-center gap-2 border-b border-border/80 px-4 py-2 transition-colors hover:bg-muted/40",
+              "grid cursor-pointer grid-cols-[1fr_1fr_80px_80px_80px_48px_64px] items-center gap-2 border-b border-border/80 px-3 py-1.5 text-sm transition-colors hover:bg-muted/40",
               selectedId === s.id && "bg-primary/5 ring-inset ring-1 ring-primary/20"
             )}
             onClick={() => onSelect(s)}
           >
             <div className="flex min-w-0 items-center gap-2">
-              <WorkerAvatar name={workerName} className="size-8" />
+              <WorkerAvatar name={workerName} className="size-6" />
               <span className="truncate text-sm font-medium">{workerName}</span>
             </div>
             <Link
