@@ -50,7 +50,7 @@ export function TaskDetailPanel({ task, onClose, className }: TaskDetailPanelPro
     try {
       await createSubmission.mutateAsync({
         taskId: task.id,
-        userId: user.id,
+        workerId: user.id,
         content: content.trim(),
       });
       setContent("");
