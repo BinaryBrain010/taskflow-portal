@@ -298,3 +298,27 @@
   border: none !important;
   padding: 2px !important;
 }
+
+/* Detail sidebar: internal scroll area (thin scrollbar) */
+.sidebar-content-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+}
+.sidebar-content-scroll::-webkit-scrollbar {
+  width: 4px;
+}
+.sidebar-content-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+.sidebar-content-scroll::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 9999px;
+}
+
+/* Hide scrollbar (feed type pills) */
+.scrollbar-none {
+  scrollbar-width: none;
+}
+.scrollbar-none::-webkit-scrollbar {
+  display: none;
+}
