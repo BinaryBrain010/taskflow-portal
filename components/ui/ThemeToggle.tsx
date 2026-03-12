@@ -8,14 +8,14 @@ import { Tooltip } from "@/components/ui/tooltip";
 import { setAppSettings } from "@/lib/settings";
 import { cn } from "@/lib/utils";
 
-// View Transitions API is not yet in all TypeScript DOM types
-interface ViewTransitionDocument extends Document {
+// Narrow type for View Transitions API (avoid extending Document to prevent conflict with DOM lib)
+type ViewTransitionDoc = {
   startViewTransition?(callback: () => void | Promise<void>): {
     ready: Promise<void>;
     finished: Promise<void>;
     updateCallbackDone: Promise<void>;
   };
-}
+};
 
 export function ThemeToggle() {
   const { resolvedTheme, setTheme } = useTheme();
@@ -34,7 +34,7 @@ export function ThemeToggle() {
     );
     const next = resolvedTheme === "dark" ? "light" : "dark";
 
-    const doc = document as ViewTransitionDocument;
+    const doc = document as unknown as ViewTransitionDoc;
     if (!doc.startViewTransition) {
       setTheme(next);
       setAppSettings({ theme: next });
