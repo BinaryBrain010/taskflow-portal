@@ -126,8 +126,14 @@
   * {
     @apply border-border outline-ring/50;
   }
+  html {
+    overflow-x: hidden;
+    -webkit-overflow-scrolling: touch;
+  }
   body {
     @apply bg-background text-foreground font-sans;
+    min-width: 0;
+    overflow-x: hidden;
   }
   h1, h2, h3, h4, h5, h6 {
     font-family: var(--font-display);

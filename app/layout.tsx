@@ -23,6 +23,13 @@ export const metadata: Metadata = {
   description: "Task management platform for admins and workers",
 };
 
+export const viewport = {
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 5,
+  viewportFit: "cover",
+};
+
 export default function RootLayout({
   children,
 }: Readonly<{
@@ -30,7 +37,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" className={`${figtree.variable} ${syne.variable}`} suppressHydrationWarning>
-      <body className="antialiased">
+      <body className="antialiased min-h-screen w-full overflow-x-hidden">
         <ThemeProvider>
           <SettingsApply />
           <NuqsAdapter>

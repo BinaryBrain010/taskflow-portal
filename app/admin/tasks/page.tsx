@@ -482,7 +482,7 @@ export default function AdminTasksPage() {
     : "createdAt-desc";
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-3 px-2">
+    <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-3 px-1 sm:px-2">
       {/* Page header: match submissions — title + divider + count + New task */}
       <div className="flex flex-wrap items-center gap-3 border-b border-border pb-2">
         <h1 className="font-display text-xl font-semibold tracking-tight text-foreground">

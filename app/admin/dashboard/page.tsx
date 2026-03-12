@@ -61,7 +61,7 @@ export default function AdminDashboardPage() {
   const detailOpen = !!selectedSubmission;
 
   return (
-    <div className="space-y-6">
+    <div className="min-w-0 space-y-6">
       <div>
         <h1 className="font-display text-2xl font-semibold tracking-tight text-foreground">
           Dashboard

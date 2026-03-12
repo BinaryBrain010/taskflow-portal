@@ -481,14 +481,14 @@ export default function AdminUsersPage() {
   const detailOpen = !!selected;
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-3 px-2">
+    <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-3 px-1 sm:px-2">
       {/* Header: title + search + Invite */}
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border pb-2">
         <h1 className="font-display text-xl font-semibold tracking-tight text-foreground">
           Users
         </h1>
         <div className="flex items-center gap-2">
-          <div className="relative w-40 min-w-[180px] transition-[width] duration-200 focus-within:w-56">
+          <div className="relative w-full min-w-0 transition-[width] duration-200 sm:w-40 sm:min-w-[140px] focus-within:sm:w-56">
             <Search
               className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground"
               aria-hidden

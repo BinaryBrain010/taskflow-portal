@@ -300,7 +300,7 @@ export default function FeedPage() {
     params.tab === "claimed" && counts.claimed === 0 && counts.all > 0;
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-3">
+    <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-3">
       {/* Top bar: single compact row */}
       <div className="flex flex-wrap items-center gap-2">
         <div className="flex shrink-0 items-center gap-1">
@@ -657,7 +657,7 @@ export default function FeedPage() {
           )}
 
           {!error && displayTasks.length > 0 && effectiveView === "table" && (
-            <div ref={scrollParentRef} className="flex-1 overflow-auto">
+            <div ref={scrollParentRef} className="flex-1 overflow-x-auto overflow-y-auto">
               <div className="min-w-[800px]">
                 <table className="w-full border-collapse">
                   <thead className="sticky top-0 z-10 border-b border-border bg-muted">

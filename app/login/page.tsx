@@ -39,7 +39,7 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="flex min-h-screen">
+    <div className="flex min-h-screen w-full min-w-0 overflow-x-hidden">
       {/* Left: image panel */}
       <aside className="relative hidden overflow-hidden lg:block lg:w-[70%]">
         <div
@@ -54,7 +54,7 @@ export default function LoginPage() {
       </aside>
 
       {/* Right: form */}
-      <div className="flex min-h-screen w-full flex-col items-center justify-center bg-background px-4 py-12 lg:w-[30%] lg:px-8">
+      <div className="flex min-h-screen w-full min-w-0 flex-col items-center justify-center bg-background px-4 py-8 sm:py-12 lg:w-[30%] lg:px-8">
         <div className="w-full max-w-sm space-y-8">
         <div className="text-center">
           <h1 className="font-display text-2xl font-semibold tracking-tight text-foreground">

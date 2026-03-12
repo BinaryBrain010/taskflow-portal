@@ -288,7 +288,7 @@ export default function TaskDetailPage() {
   const slotsRemaining = task.totalSlots - task.filledSlots;
 
   return (
-    <div className="space-y-6 p-4 pb-8">
+    <div className="min-w-0 space-y-6 p-3 pb-8 sm:p-4">
       {/* Breadcrumb */}
       <nav className="flex items-center gap-2 text-sm text-muted-foreground">
         <Link href="/admin/dashboard" className="hover:text-foreground">

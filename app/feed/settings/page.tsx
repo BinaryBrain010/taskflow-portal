@@ -125,7 +125,7 @@ export default function WorkerSettingsPage() {
     : "system") as ThemeMode;
 
   return (
-    <div className="mx-auto max-w-4xl">
+    <div className="min-w-0 px-3 sm:px-0 mx-auto max-w-4xl">
       <div className="mb-8">
         <h1 className="font-display text-2xl font-semibold text-foreground">
           Settings

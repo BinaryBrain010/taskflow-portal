@@ -215,7 +215,7 @@ export default function AdminSettingsPage() {
   }, [section, toast]);
 
   return (
-    <div className="mx-auto max-w-4xl">
+    <div className="min-w-0 px-1 sm:px-0 mx-auto max-w-4xl">
       <div className="mb-8">
         <h1 className="font-display text-2xl font-semibold text-foreground">
           Settings

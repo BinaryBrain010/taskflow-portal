@@ -606,7 +606,7 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
   );
 
   return (
-    <div className="flex min-h-screen bg-background">
+    <div className="flex min-h-screen w-full min-w-0 bg-background">
       <aside
         className={cn(
           "hidden h-screen border-r border-sidebar-border bg-sidebar md:flex md:flex-col md:shrink-0 md:sticky md:top-0 md:self-start transition-[width] duration-200",
@@ -657,8 +657,8 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
         <div className="shrink-0">{bottomSection}</div>
       </aside>
 
-      <div className="flex flex-1 flex-col md:min-w-0">
-        <header className="flex h-14 shrink-0 items-center justify-end gap-2 border-b border-border bg-background px-4 md:border-l">
+      <div className="flex min-w-0 flex-1 flex-col md:min-w-0">
+        <header className="flex h-14 shrink-0 items-center justify-end gap-2 border-b border-border bg-background px-3 sm:px-4 md:border-l">
           <SheetRoot open={mobileSheetOpen} onOpenChange={setMobileSheetOpen}>
             <SheetTrigger
               className="inline-flex md:hidden items-center justify-center rounded-md border border-input bg-background px-3 py-2 text-sm"
@@ -737,7 +737,7 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
             </div>
           </div>
         </header>
-        <main className="flex-1 overflow-auto p-4 md:p-6">{children}</main>
+        <main className="min-w-0 flex-1 overflow-x-hidden overflow-y-auto p-3 sm:p-4 md:p-6">{children}</main>
       </div>
     </div>
   );

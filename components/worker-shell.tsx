@@ -115,9 +115,9 @@ export function WorkerShell({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <div className="flex min-h-screen flex-col bg-background pb-16 md:pb-0">
+    <div className="flex min-h-screen w-full min-w-0 flex-col bg-background pb-16 md:pb-0">
       {/* Top bar: desktop = full nav; mobile = logo + avatar only */}
-      <header className="sticky top-0 z-40 flex h-14 shrink-0 items-center gap-3 border-b border-border bg-background px-4">
+      <header className="sticky top-0 z-40 flex h-14 shrink-0 items-center gap-2 border-b border-border bg-background px-3 sm:px-4 pl-[max(0.75rem,env(safe-area-inset-left))] pr-[max(0.75rem,env(safe-area-inset-right))]">
         <SheetRoot open={mobileMenuOpen} onOpenChange={setMobileMenuOpen}>
           <SheetTrigger
             className={cn(buttonVariants({ variant: "ghost", size: "icon" }), "md:hidden")}
@@ -270,11 +270,11 @@ export function WorkerShell({ children }: { children: React.ReactNode }) {
         </div>
       </header>
 
-      <main className="min-h-0 flex-1 overflow-auto p-4 md:p-6">{children}</main>
+      <main className="min-w-0 min-h-0 flex-1 overflow-x-hidden overflow-y-auto p-3 sm:p-4 md:p-6">{children}</main>
 
       {/* Mobile: fixed bottom nav */}
       <nav
-        className="fixed bottom-0 left-0 right-0 z-40 flex items-center justify-around border-t border-border bg-background px-2 pb-[env(safe-area-inset-bottom)] pt-2 md:hidden"
+        className="fixed bottom-0 left-0 right-0 z-40 flex items-center justify-around border-t border-border bg-background px-2 pt-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] pl-[max(0.5rem,env(safe-area-inset-left))] pr-[max(0.5rem,env(safe-area-inset-right))] md:hidden"
         aria-label="Main navigation"
       >
         {BOTTOM_NAV.map(({ href, label, icon: Icon }) => {
