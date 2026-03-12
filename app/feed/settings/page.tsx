@@ -102,6 +102,11 @@ export default function WorkerSettingsPage() {
       document.body.setAttribute("data-density", s.tableDensity);
     }
     loadGoogleFont(s.fontFamily);
+    const fontName = FONT_FAMILY_MAP[s.fontFamily]?.name ?? "Inter";
+    document.documentElement.style.setProperty(
+      "--font-sans",
+      `"${fontName}", ui-sans-serif, system-ui, sans-serif`
+    );
   }, [setTheme]);
 
   const updateSettings = useCallback(
