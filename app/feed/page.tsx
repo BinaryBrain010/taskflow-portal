@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useMemo, useRef, useState, useEffect } from "react";
 import { useQueryStates, parseAsStringLiteral } from "nuqs";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import type { Task, TaskType } from "@/lib/types";
@@ -8,16 +8,9 @@ import { useTasksQuery } from "@/hooks/useTasks";
 import { useAuth } from "@/hooks/useAuth";
 import { useSubmissionsQuery } from "@/hooks/useSubmissions";
 import { useIsMobile } from "@/hooks/useIsMobile";
-import { TaskCard, TYPE_LABELS, TYPE_BADGE, countdown, formatRewardCents } from "@/components/feed/TaskCard";
-import type { WorkerSubmissionStatus } from "@/components/feed/TaskCard";
+import { FeedTaskCardCompact, formatReward, countdownRelative } from "@/components/feed/FeedTaskCardCompact";
 import { TaskDetailPanel } from "@/components/feed/TaskDetailPanel";
-import {
-  FeedFiltersPanel,
-  DEFAULT_FEED_ADVANCED_FILTERS,
-  isDefaultFilters,
-  applyAdvancedFilters,
-  type FeedAdvancedFilters,
-} from "@/components/feed/FeedFiltersPanel";
+import { Tooltip } from "@/components/ui/tooltip";
 import {
   SheetRoot,
   SheetContent,
@@ -27,15 +20,24 @@ import {
 } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Tooltip } from "@/components/ui/tooltip";
-import { Search, LayoutGrid, List, Filter, Inbox, ClipboardList, Eye, Tag, Mic, Check } from "lucide-react";
+import { SelectDropdown } from "@/components/ui/select-dropdown";
+import {
+  Search,
+  LayoutGrid,
+  List,
+  Filter,
+  Inbox,
+  ClipboardList,
+  Eye,
+  Tag,
+  Mic,
+  Check,
+  X,
+} from "lucide-react";
 import { cn } from "@/lib/utils";
 
-const FEED_VIEW_KEY = "feed_view_mode";
-const CARD_ESTIMATE = 140;
-const ROW_HEIGHT = 40;
-const OVERSCAN = 5;
-const VIRTUAL_THRESHOLD = 100;
+const FEED_VIEW_KEY = "feed-view-mode";
+const DEFAULT_VIEW = "table";
 
 const SORT_OPTIONS = [
   { value: "latest" as const, label: "Latest" },
@@ -56,6 +58,20 @@ const FEED_TABS = [
   { id: "claimed" as const, label: "Claimed" },
 ];
 
+const SLOTS_OPTIONS = [
+  { value: "any", label: "Any" },
+  { value: "has_slots", label: "Has slots (>0)" },
+  { value: "plenty", label: "Plenty (>50%)" },
+  { value: "almost_full", label: "Almost full (<10%)" },
+];
+
+const EXPIRY_OPTIONS = [
+  { value: "any", label: "Any time" },
+  { value: "today", label: "Expires today" },
+  { value: "week", label: "This week" },
+  { value: "month", label: "This month" },
+];
+
 const feedParsers = {
   sort: parseAsStringLiteral(["latest", "highest_reward"] as const).withDefault("latest"),
   type: parseAsStringLiteral([
@@ -68,6 +84,20 @@ const feedParsers = {
   tab: parseAsStringLiteral(["all", "open", "claimed"] as const).withDefault("all"),
 };
 
+const TYPE_LABELS: Record<TaskType, string> = {
+  survey: "Survey",
+  content_review: "Content Review",
+  data_labeling: "Data Labeling",
+  transcription: "Transcription",
+};
+
+const TYPE_BADGE: Record<TaskType, string> = {
+  survey: "bg-indigo-500/15 text-indigo-700 dark:bg-indigo-900/50 dark:text-indigo-200",
+  content_review: "bg-violet-500/15 text-violet-700 dark:bg-violet-900/50 dark:text-violet-200",
+  data_labeling: "bg-orange-500/15 text-orange-700 dark:bg-orange-900/50 dark:text-orange-200",
+  transcription: "bg-cyan-500/15 text-cyan-700 dark:bg-cyan-900/50 dark:text-cyan-200",
+};
+
 function sortTasks(tasks: Task[], sort: "latest" | "highest_reward"): Task[] {
   const copy = [...tasks];
   if (sort === "latest") {
@@ -78,39 +108,51 @@ function sortTasks(tasks: Task[], sort: "latest" | "highest_reward"): Task[] {
   return copy;
 }
 
-function expiresRelative(expiresAt: string | null): string {
-  if (!expiresAt) return "—";
-  const end = new Date(expiresAt).getTime();
-  const now = Date.now();
-  if (end <= now) return "Expired";
-  const d = Math.floor((end - now) / 86400000);
-  if (d === 0) return "Today";
-  if (d === 1) return "1d";
-  return `${d}d`;
-}
-
-function slotsUrgency(slotsLeft: number, total: number): "normal" | "low" | "critical" {
-  if (total <= 0) return "normal";
-  const pct = (slotsLeft / total) * 100;
-  if (pct < 10) return "critical";
-  if (pct < 50) return "low";
-  return "normal";
+function applyAdvancedFilters(
+  tasks: Task[],
+  opts: {
+    rewardMinCents: number;
+    rewardMaxCents: number;
+    slotsFilter: string;
+    expiryFilter: string;
+  }
+): Task[] {
+  return tasks.filter((t) => {
+    if (t.reward < opts.rewardMinCents || t.reward > opts.rewardMaxCents) return false;
+    const slotsLeft = t.totalSlots - t.filledSlots;
+    const pctLeft = t.totalSlots > 0 ? (slotsLeft / t.totalSlots) * 100 : 100;
+    if (opts.slotsFilter === "has_slots" && slotsLeft <= 0) return false;
+    if (opts.slotsFilter === "plenty" && pctLeft <= 50) return false;
+    if (opts.slotsFilter === "almost_full" && (pctLeft >= 10 || pctLeft <= 0)) return false;
+    if (opts.expiryFilter !== "any" && t.expiresAt) {
+      const end = new Date(t.expiresAt).getTime();
+      const now = Date.now();
+      const day = 86400000;
+      const todayEnd = new Date(new Date().setHours(23, 59, 59, 999)).getTime();
+      const weekEnd = now + 7 * day;
+      const monthEnd = now + 30 * day;
+      if (opts.expiryFilter === "today" && end > todayEnd) return false;
+      if (opts.expiryFilter === "week" && end > weekEnd) return false;
+      if (opts.expiryFilter === "month" && end > monthEnd) return false;
+    }
+    return true;
+  });
 }
 
 function TaskCardSkeleton() {
   return (
-    <div className="rounded-lg border border-border bg-card p-3 shadow-sm">
+    <div className="rounded-lg border border-border bg-card p-3">
       <div className="flex justify-between gap-2">
         <div className="h-4 w-14 animate-pulse rounded-full bg-muted" />
         <div className="h-4 w-12 animate-pulse rounded bg-muted" />
       </div>
-      <div className="mt-1.5 h-3.5 w-full animate-pulse rounded bg-muted" />
+      <div className="mt-2 h-3 w-full animate-pulse rounded bg-muted" />
       <div className="mt-1 h-3 w-4/5 animate-pulse rounded bg-muted" />
       <div className="mt-2 flex gap-2">
-        <div className="h-3 w-16 animate-pulse rounded bg-muted" />
-        <div className="h-3 w-12 animate-pulse rounded bg-muted" />
+        <div className="h-2.5 w-16 animate-pulse rounded bg-muted" />
+        <div className="h-2.5 w-12 animate-pulse rounded bg-muted" />
       </div>
-      <div className="mt-1.5 h-1 w-full animate-pulse rounded-full bg-muted" />
+      <div className="mt-2 h-1 w-full animate-pulse rounded-full bg-muted" />
     </div>
   );
 }
@@ -127,11 +169,12 @@ function TableRowSkeleton() {
   );
 }
 
-const EMPTY_TYPE: Record<TaskType, { icon: React.ComponentType<{ className?: string }>; msg: string }> = {
-  survey: { icon: ClipboardList, msg: "No Survey tasks available right now." },
-  content_review: { icon: Eye, msg: "No Content Review tasks available right now." },
-  data_labeling: { icon: Tag, msg: "No Data Labeling tasks available right now." },
-  transcription: { icon: Mic, msg: "No Transcription tasks available right now." },
+const EMPTY_TYPE_HEADINGS: Record<TaskType | "all", string> = {
+  all: "No tasks available right now",
+  survey: "No Survey tasks available right now",
+  content_review: "No Content Review tasks available right now",
+  data_labeling: "No Data Labeling tasks available right now",
+  transcription: "No Transcription tasks available right now",
 };
 
 export default function FeedPage() {
@@ -139,26 +182,30 @@ export default function FeedPage() {
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [searchExpanded, setSearchExpanded] = useState(false);
-  const [viewMode, setViewModeState] = useState<"card" | "table">("card");
   const [filtersOpen, setFiltersOpen] = useState(false);
-  const [advancedFilters, setAdvancedFilters] = useState<FeedAdvancedFilters>(DEFAULT_FEED_ADVANCED_FILTERS);
-  const [filtersApplied, setFiltersApplied] = useState<FeedAdvancedFilters>(DEFAULT_FEED_ADVANCED_FILTERS);
-  const isMobile = useIsMobile();
-  const scrollParentRef = useRef<HTMLDivElement>(null);
+  const [viewMode, setViewMode] = useState<"card" | "table">(DEFAULT_VIEW);
+  const [rewardMinCents, setRewardMinCents] = useState(0);
+  const [rewardMaxCents, setRewardMaxCents] = useState(2000); // $20
+  const [slotsFilter, setSlotsFilter] = useState("any");
+  const [expiryFilter, setExpiryFilter] = useState("any");
   const searchInputRef = useRef<HTMLInputElement>(null);
-  const { user } = useAuth();
+  const scrollParentRef = useRef<HTMLDivElement>(null);
+  const isMobile = useIsMobile();
 
   useEffect(() => {
-    const raw = localStorage.getItem(FEED_VIEW_KEY);
-    if (raw === "card" || raw === "table") setViewModeState(raw);
+    const stored = localStorage.getItem(FEED_VIEW_KEY) as "card" | "table" | null;
+    if (stored === "card" || stored === "table") setViewMode(stored);
   }, []);
+  useEffect(() => {
+    localStorage.setItem(FEED_VIEW_KEY, viewMode);
+  }, [viewMode]);
 
-  const setViewMode = useCallback((mode: "card" | "table") => {
-    setViewModeState(mode);
-    localStorage.setItem(FEED_VIEW_KEY, mode);
-  }, []);
+  useEffect(() => {
+    if (searchExpanded) searchInputRef.current?.focus();
+  }, [searchExpanded]);
 
-  const { data: mySubmissions = [], isLoading: submissionsLoading } = useSubmissionsQuery(
+  const { user } = useAuth();
+  const { data: mySubmissions = [] } = useSubmissionsQuery(
     user ? { workerId: user.id } : undefined
   );
   const claimedTaskIds = useMemo(
@@ -181,7 +228,7 @@ export default function FeedPage() {
     [params.type]
   );
 
-  const { data: tasks = [], isLoading: tasksLoading, error, isPlaceholderData } = useTasksQuery(filters, {
+  const { data: tasks = [], isLoading, error } = useTasksQuery(filters, {
     placeholderData: (prev) => prev,
   });
 
@@ -195,16 +242,22 @@ export default function FeedPage() {
     return sortedTasks.filter((t) => claimedTaskIds.has(t.id));
   }, [sortedTasks, params.tab, claimedTaskIds]);
 
-  const filteredBySearch = useMemo(() => {
-    if (!searchQuery.trim()) return filteredByTab;
-    const q = searchQuery.trim().toLowerCase();
-    return filteredByTab.filter((t) => t.title.toLowerCase().includes(q));
-  }, [filteredByTab, searchQuery]);
-
   const filteredByAdvanced = useMemo(
-    () => applyAdvancedFilters(filteredBySearch, filtersApplied),
-    [filteredBySearch, filtersApplied]
+    () =>
+      applyAdvancedFilters(filteredByTab, {
+        rewardMinCents,
+        rewardMaxCents,
+        slotsFilter,
+        expiryFilter,
+      }),
+    [filteredByTab, rewardMinCents, rewardMaxCents, slotsFilter, expiryFilter]
   );
+
+  const filteredBySearch = useMemo(() => {
+    if (!searchQuery.trim()) return filteredByAdvanced;
+    const q = searchQuery.trim().toLowerCase();
+    return filteredByAdvanced.filter((t) => t.title.toLowerCase().includes(q));
+  }, [filteredByAdvanced, searchQuery]);
 
   const counts = useMemo(() => {
     const openCount = sortedTasks.filter((t) => t.totalSlots - t.filledSlots > 0).length;
@@ -213,525 +266,544 @@ export default function FeedPage() {
   }, [sortedTasks, claimedTaskIds]);
 
   const activeFilterCount = useMemo(() => {
-    if (isDefaultFilters(filtersApplied)) return 0;
     let n = 0;
-    if (filtersApplied.rewardMin !== DEFAULT_FEED_ADVANCED_FILTERS.rewardMin || filtersApplied.rewardMax !== DEFAULT_FEED_ADVANCED_FILTERS.rewardMax) n++;
-    if (filtersApplied.slotsLeft !== "any") n++;
-    if (filtersApplied.expiry !== "any") n++;
+    if (rewardMinCents > 0 || rewardMaxCents < 2000) n++;
+    if (slotsFilter !== "any") n++;
+    if (expiryFilter !== "any") n++;
     return n;
-  }, [filtersApplied]);
+  }, [rewardMinCents, rewardMaxCents, slotsFilter, expiryFilter]);
 
-  const list = filteredByAdvanced;
-  const useVirtual = list.length > VIRTUAL_THRESHOLD;
-  const cardRowCount = viewMode === "card" || isMobile ? Math.ceil(list.length / 2) : list.length;
-  const virtualCount = viewMode === "table" && !isMobile ? list.length : cardRowCount;
-  const virtualEstimate = viewMode === "table" && !isMobile ? ROW_HEIGHT : CARD_ESTIMATE;
-
+  const displayTasks = filteredBySearch;
+  const effectiveView = isMobile ? "card" : viewMode;
+  const useVirtual = effectiveView === "card" && displayTasks.length > 100;
   const virtualizer = useVirtualizer({
-    count: useVirtual ? virtualCount : 0,
+    count: displayTasks.length,
     getScrollElement: () => scrollParentRef.current,
-    estimateSize: () => virtualEstimate,
-    overscan: OVERSCAN,
+    estimateSize: () => 140,
+    overscan: 5,
   });
 
   const openDetail = (task: Task) => setSelectedTask(task);
   const closeDetail = () => setSelectedTask(null);
   const detailOpen = !!selectedTask;
 
-  const handleClearSearch = () => setSearchQuery("");
-  const handleApplyFilters = () => {
-    setFiltersApplied(advancedFilters);
-    setFiltersOpen(false);
-  };
-  const handleClearFilters = () => {
-    setAdvancedFilters(DEFAULT_FEED_ADVANCED_FILTERS);
-    setFiltersApplied(DEFAULT_FEED_ADVANCED_FILTERS);
+  const clearAdvancedFilters = () => {
+    setRewardMinCents(0);
+    setRewardMaxCents(2000);
+    setSlotsFilter("any");
+    setExpiryFilter("any");
   };
 
-  const isEmpty = !tasksLoading && !error && list.length === 0;
-  const emptyBecauseSearch = searchQuery.trim() !== "" && filteredByTab.length > 0 && list.length === 0;
-  const emptyBecauseType = params.type !== "all" && filteredByTab.length === 0 && !searchQuery.trim();
-  const emptyAllClaimed = params.tab === "open" && sortedTasks.length > 0 && filteredByTab.length === 0;
+  const emptyType = params.type === "all" ? "all" : params.type;
+  const emptyHeading = EMPTY_TYPE_HEADINGS[emptyType];
+  const isAllClaimed =
+    params.tab === "claimed" && counts.claimed === 0 && counts.all > 0;
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-3">
-        {/* Top bar: single row */}
-        <div className="flex flex-wrap items-center gap-2 md:gap-3">
-          <div className="flex shrink-0 items-center gap-1" role="tablist" aria-label="Feed status">
-            {FEED_TABS.map(({ id, label }) => (
-              <button
-                key={id}
-                type="button"
-                role="tab"
-                aria-selected={params.tab === id}
-                onClick={() => setParams({ tab: id })}
-                className={cn(
-                  "flex shrink-0 items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-medium transition-colors",
-                  params.tab === id
-                    ? "border-primary bg-primary text-primary-foreground"
-                    : "border-border bg-card text-muted-foreground hover:bg-muted hover:text-foreground"
-                )}
-              >
-                {label} {counts[id]}
-              </button>
-            ))}
-          </div>
-          <div className="flex shrink-0 items-center rounded-lg border border-border bg-muted/30 p-0.5">
+      {/* Top bar: single compact row */}
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="flex shrink-0 items-center gap-1">
+          {FEED_TABS.map(({ id, label }) => (
+            <button
+              key={id}
+              type="button"
+              onClick={() => setParams({ tab: id })}
+              className={cn(
+                "rounded-full border px-2.5 py-1.5 text-xs font-medium transition-colors",
+                params.tab === id
+                  ? "border-primary bg-primary text-primary-foreground"
+                  : "border-border bg-card text-muted-foreground hover:bg-muted hover:text-foreground"
+              )}
+            >
+              {label} {counts[id]}
+            </button>
+          ))}
+        </div>
+        <div className="flex flex-1 items-center justify-end gap-2">
+          <div className="flex rounded-md border border-border bg-muted/30 p-0.5">
             {SORT_OPTIONS.map(({ value, label }) => (
               <button
                 key={value}
                 type="button"
                 onClick={() => setParams({ sort: value })}
                 className={cn(
-                  "rounded-md px-2.5 py-1 text-xs font-medium transition-colors",
-                  params.sort === value ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
+                  "rounded px-2.5 py-1.5 text-xs font-medium transition-colors",
+                  params.sort === value
+                    ? "bg-background text-foreground shadow-sm"
+                    : "text-muted-foreground hover:text-foreground"
                 )}
               >
                 {label}
               </button>
             ))}
           </div>
-          <div
-            className={cn(
-              "flex items-center overflow-hidden transition-[width] duration-200",
-              searchExpanded ? "w-48" : "w-8"
-            )}
-          >
-            <button
-              type="button"
-              onClick={() => {
-                setSearchExpanded((e) => !e);
-                if (!searchExpanded) setTimeout(() => searchInputRef.current?.focus(), 50);
-              }}
-              className="flex size-8 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
-              aria-label={searchExpanded ? "Collapse search" : "Expand search"}
+          <div className="flex items-center gap-1">
+            <div
+              className={cn(
+                "overflow-hidden transition-[width] duration-200",
+                searchExpanded ? "w-48" : "w-0"
+              )}
+            >
+              <Input
+                ref={searchInputRef}
+                type="search"
+                placeholder="Search..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                onBlur={() => {
+                  if (!searchQuery.trim()) setSearchExpanded(false);
+                }}
+                className="h-8 w-48 text-xs"
+              />
+            </div>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="size-8 shrink-0"
+              onClick={() => setSearchExpanded((e) => !e)}
+              aria-label="Search"
             >
               <Search className="size-4" />
-            </button>
-            <Input
-              ref={searchInputRef}
-              type="search"
-              placeholder="Search..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              onBlur={() => { if (!searchQuery.trim()) setSearchExpanded(false); }}
-              className="h-8 w-44 border-0 bg-transparent pl-1 text-sm shadow-none focus-visible:ring-0"
-              aria-label="Search tasks"
-            />
+            </Button>
           </div>
           {!isMobile && (
-            <div className="ml-auto flex shrink-0 items-center gap-0.5 rounded-lg border border-border p-0.5">
-              <Tooltip content="Card view">
-                <button
-                  type="button"
-                  onClick={() => setViewMode("card")}
-                  className={cn(
-                    "flex size-8 items-center justify-center rounded-md transition-colors",
-                    viewMode === "card" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted hover:text-foreground"
+            <div className="flex shrink-0 rounded-md border border-border p-0.5">
+              <Button
+                variant={viewMode === "card" ? "default" : "ghost"}
+                size="icon"
+                className="size-8"
+                onClick={() => setViewMode("card")}
+                aria-label="Card view"
+              >
+                <LayoutGrid className="size-4" />
+              </Button>
+              <Button
+                variant={viewMode === "table" ? "default" : "ghost"}
+                size="icon"
+                className="size-8"
+                onClick={() => setViewMode("table")}
+                aria-label="Table view"
+              >
+                <List className="size-4" />
+              </Button>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Type filter row: horizontal scroll + Filters button */}
+      <div className="relative flex items-center gap-2">
+        <div
+          className="flex gap-1 overflow-x-auto py-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+          style={{
+            maskImage: "linear-gradient(to right, transparent, black 12px, black calc(100% - 12px), transparent)",
+            WebkitMaskImage: "linear-gradient(to right, transparent, black 12px, black calc(100% - 12px), transparent)",
+          }}
+        >
+          {TYPE_TABS.map(({ value, label, icon: Icon }) => (
+            <button
+              key={value}
+              type="button"
+              onClick={() => setParams({ type: value })}
+              className={cn(
+                "flex shrink-0 items-center gap-1 rounded-full border px-3 py-1 text-xs font-medium transition-colors",
+                params.type === value
+                  ? "border-primary bg-primary text-primary-foreground"
+                  : "border-border bg-card text-muted-foreground hover:bg-muted hover:text-foreground"
+              )}
+            >
+              <Icon className="size-3.5 shrink-0" />
+              {label}
+            </button>
+          ))}
+        </div>
+        <Button
+          variant="outline"
+          size="sm"
+          className="relative shrink-0 gap-1.5 border-border px-2.5 py-1 text-xs"
+          onClick={() => setFiltersOpen((o) => !o)}
+        >
+          <Filter className="size-3.5" />
+          Filters
+          {activeFilterCount > 0 && (
+            <span className="flex size-4 items-center justify-center rounded-full bg-primary text-[10px] font-bold text-primary-foreground">
+              {activeFilterCount}
+            </span>
+          )}
+        </Button>
+      </div>
+
+      {/* Advanced filters panel */}
+      {filtersOpen && (
+        <div className="rounded-lg border border-border bg-card p-3 shadow-sm">
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <div>
+              <label className="mb-1 block text-xs font-medium text-muted-foreground">
+                Reward range ($)
+              </label>
+              <div className="flex items-center gap-2">
+                <Input
+                  type="number"
+                  min={0}
+                  max={rewardMaxCents / 100}
+                  step={0.01}
+                  value={rewardMinCents / 100}
+                  onChange={(e) =>
+                    setRewardMinCents(Math.round(parseFloat(e.target.value || "0") * 100))
+                  }
+                  className="h-8 text-xs"
+                />
+                <span className="text-xs text-muted-foreground">–</span>
+                <Input
+                  type="number"
+                  min={rewardMinCents / 100}
+                  max={100}
+                  step={0.01}
+                  value={rewardMaxCents / 100}
+                  onChange={(e) =>
+                    setRewardMaxCents(Math.round(parseFloat(e.target.value || "20") * 100))
+                  }
+                  className="h-8 text-xs"
+                />
+              </div>
+            </div>
+            <div>
+              <label className="mb-1 block text-xs font-medium text-muted-foreground">
+                Slots left
+              </label>
+              <SelectDropdown.Root
+                value={slotsFilter}
+                onValueChange={setSlotsFilter}
+                options={SLOTS_OPTIONS}
+                placeholder="Any"
+              >
+                <SelectDropdown.Trigger className="h-8 w-full rounded border border-input px-2 text-xs" />
+                <SelectDropdown.Content />
+              </SelectDropdown.Root>
+            </div>
+            <div>
+              <label className="mb-1 block text-xs font-medium text-muted-foreground">
+                Expiry
+              </label>
+              <SelectDropdown.Root
+                value={expiryFilter}
+                onValueChange={setExpiryFilter}
+                options={EXPIRY_OPTIONS}
+                placeholder="Any"
+              >
+                <SelectDropdown.Trigger className="h-8 w-full rounded border border-input px-2 text-xs" />
+                <SelectDropdown.Content />
+              </SelectDropdown.Root>
+            </div>
+          </div>
+          <div className="mt-3 flex justify-end gap-2">
+            <Button variant="ghost" size="sm" className="text-xs" onClick={clearAdvancedFilters}>
+              Clear filters
+            </Button>
+            <Button size="sm" className="text-xs" onClick={() => setFiltersOpen(false)}>
+              Apply
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {/* Content area */}
+      <div className="flex min-h-0 flex-1 gap-0">
+        <div className="flex min-w-0 flex-1 flex-col">
+          {error && (
+            <div className="flex flex-1 items-center justify-center py-12">
+              <p className="text-sm text-destructive">{error.message ?? "Failed to load tasks."}</p>
+            </div>
+          )}
+
+          {!error && isLoading && !tasks.length && (
+            effectiveView === "card" ? (
+              <div className="grid gap-0 divide-y divide-border rounded-lg border border-border bg-card md:grid-cols-2">
+                {[1, 2, 3, 4].map((i) => (
+                  <div key={i} className="p-3">
+                    <TaskCardSkeleton />
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="overflow-hidden rounded-lg border border-border">
+                <table className="w-full border-collapse">
+                  <thead className="sticky top-0 z-10 border-b border-border bg-muted">
+                    <tr className="h-10 text-left text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                      <th className="px-3 py-2">Title</th>
+                      <th className="px-3 py-2">Type</th>
+                      <th className="px-3 py-2">Reward</th>
+                      <th className="px-3 py-2">Slots left</th>
+                      <th className="px-3 py-2">Filled %</th>
+                      <th className="px-3 py-2">Expires</th>
+                      <th className="px-3 py-2">Status</th>
+                      <th className="px-3 py-2 text-right">Action</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {[1, 2, 3, 4, 5, 6].map((i) => (
+                      <TableRowSkeleton key={i} />
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )
+          )}
+
+          {!error && !isLoading && displayTasks.length === 0 && (
+            <div className="flex flex-1 flex-col items-center justify-center py-12 text-center">
+              {searchQuery.trim() ? (
+                <>
+                  <Search className="size-10 text-muted-foreground" />
+                  <h2 className="mt-4 font-display text-lg font-semibold text-foreground">
+                    No tasks match &quot;{searchQuery}&quot;
+                  </h2>
+                  <button
+                    type="button"
+                    onClick={() => setSearchQuery("")}
+                    className="mt-2 text-sm font-medium text-primary hover:underline"
+                  >
+                    Clear search
+                  </button>
+                </>
+              ) : isAllClaimed ? (
+                <>
+                  <Check className="size-10 text-green-500" />
+                  <h2 className="mt-4 font-display text-lg font-semibold text-foreground">
+                    You&apos;ve submitted all available tasks!
+                  </h2>
+                  <p className="mt-1 text-sm text-muted-foreground">Check back soon.</p>
+                </>
+              ) : (
+                <>
+                  {emptyType === "all" ? (
+                    <Inbox className="size-10 text-muted-foreground" />
+                  ) : (
+                    (() => {
+                      const TabIcon = TYPE_TABS.find((t) => t.value === emptyType)?.icon ?? Inbox;
+                      return <TabIcon className="size-10 text-muted-foreground" />;
+                    })()
                   )}
-                  aria-label="Card view"
+                  <h2 className="mt-4 font-display text-lg font-semibold text-foreground">
+                    {emptyHeading}
+                  </h2>
+                  <p className="mt-1 text-sm text-muted-foreground">Check back soon.</p>
+                </>
+              )}
+            </div>
+          )}
+
+          {!error && displayTasks.length > 0 && effectiveView === "card" && (
+            <div
+              ref={scrollParentRef}
+              className={cn(
+                "flex-1 overflow-auto overflow-x-hidden",
+                useVirtual && "min-h-0"
+              )}
+            >
+              {useVirtual ? (
+                <div
+                  style={{
+                    height: `${virtualizer.getTotalSize()}px`,
+                    position: "relative",
+                    width: "100%",
+                  }}
                 >
-                  <LayoutGrid className="size-4" />
-                </button>
-              </Tooltip>
-              <Tooltip content="Table view">
-                <button
-                  type="button"
-                  onClick={() => setViewMode("table")}
-                  className={cn(
-                    "flex size-8 items-center justify-center rounded-md transition-colors",
-                    viewMode === "table" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted hover:text-foreground"
-                  )}
-                  aria-label="Table view"
-                >
-                  <List className="size-4" />
-                </button>
-              </Tooltip>
+                  {virtualizer.getVirtualItems().map((virtualRow) => {
+                    const task = displayTasks[virtualRow.index];
+                    if (!task) return null;
+                    const workerStatus = taskIdToStatus.get(task.id) ?? null;
+                    return (
+                      <div
+                        key={task.id}
+                        style={{
+                          position: "absolute",
+                          top: 0,
+                          left: 0,
+                          width: "100%",
+                          transform: `translateY(${virtualRow.start}px)`,
+                        }}
+                        className="py-1"
+                      >
+                        <FeedTaskCardCompact
+                          task={task}
+                          onClick={() => openDetail(task)}
+                          isSelected={selectedTask?.id === task.id}
+                          workerStatus={workerStatus}
+                        />
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 gap-0 divide-y divide-border rounded-lg border border-border bg-card md:grid-cols-2 md:divide-x md:divide-y-0">
+                  {displayTasks.map((task) => {
+                    const workerStatus = taskIdToStatus.get(task.id) ?? null;
+                    return (
+                      <div key={task.id} className="p-2">
+                        <FeedTaskCardCompact
+                          task={task}
+                          onClick={() => openDetail(task)}
+                          isSelected={selectedTask?.id === task.id}
+                          workerStatus={workerStatus}
+                        />
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+
+          {!error && displayTasks.length > 0 && effectiveView === "table" && (
+            <div ref={scrollParentRef} className="flex-1 overflow-auto">
+              <div className="min-w-[800px]">
+                <table className="w-full border-collapse">
+                  <thead className="sticky top-0 z-10 border-b border-border bg-muted">
+                    <tr className="h-10 text-left text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                      <th className="px-3 py-2">Title</th>
+                      <th className="px-3 py-2">Type</th>
+                      <th className="px-3 py-2">Reward</th>
+                      <th className="px-3 py-2">Slots left</th>
+                      <th className="px-3 py-2">Filled %</th>
+                      <th className="px-3 py-2">Expires</th>
+                      <th className="px-3 py-2">Status</th>
+                      <th className="px-3 py-2 text-right">Action</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {displayTasks.map((task, idx) => {
+                          const slotsLeft = task.totalSlots - task.filledSlots;
+                          const pctFilled =
+                            task.totalSlots > 0
+                              ? Math.round((task.filledSlots / task.totalSlots) * 100)
+                              : 0;
+                          const pctLeft = 100 - pctFilled;
+                          const workerStatus = taskIdToStatus.get(task.id) ?? null;
+                          const urgency =
+                            pctLeft > 50 ? "normal" : pctLeft > 10 ? "low" : "critical";
+                          return (
+                            <tr
+                              key={task.id}
+                              className={cn(
+                                "h-10 border-b border-border",
+                                idx % 2 === 1 && "bg-muted/30",
+                                "hover:bg-muted/50"
+                              )}
+                            >
+                              <td className="max-w-[200px] truncate px-3 py-2 text-sm">
+                                <Tooltip content={task.title} side="top">
+                                  <span>{task.title}</span>
+                                </Tooltip>
+                              </td>
+                              <td className="px-3 py-2">
+                                <span
+                                  className={cn(
+                                    "inline-flex rounded-full px-1.5 py-0.5 text-[10px] font-medium",
+                                    TYPE_BADGE[task.type]
+                                  )}
+                                >
+                                  {TYPE_LABELS[task.type]}
+                                </span>
+                              </td>
+                              <td className="px-3 py-2 text-sm font-medium text-primary">
+                                {formatReward(task.reward)}
+                              </td>
+                              <td
+                                className={cn(
+                                  "px-3 py-2 text-sm",
+                                  slotsLeft < (task.totalSlots * 0.1) && "text-amber-600 dark:text-amber-400"
+                                )}
+                              >
+                                {slotsLeft}
+                              </td>
+                              <td className="flex items-center gap-1.5 px-3 py-2">
+                                <div className="h-1.5 w-16 overflow-hidden rounded-full bg-muted">
+                                  <div
+                                    className="h-full rounded-full bg-primary"
+                                    style={{ width: `${pctFilled}%` }}
+                                  />
+                                </div>
+                                <span className="text-xs text-muted-foreground">{pctFilled}%</span>
+                              </td>
+                              <td className="px-3 py-2 text-xs text-muted-foreground">
+                                {countdownRelative(task.expiresAt)}
+                              </td>
+                              <td className="px-3 py-2">
+                                {workerStatus ? (
+                                  <span
+                                    className={cn(
+                                      "inline-flex rounded-full px-1.5 py-0.5 text-[10px] font-medium",
+                                      workerStatus === "approved" &&
+                                        "bg-green-500/15 text-green-700 dark:text-green-200",
+                                      workerStatus === "pending" &&
+                                        "bg-amber-500/15 text-amber-700 dark:text-amber-200",
+                                      workerStatus === "rejected" && "bg-destructive/15 text-destructive"
+                                    )}
+                                  >
+                                    {workerStatus}
+                                  </span>
+                                ) : (
+                                  <span
+                                    className={cn(
+                                      "text-[10px]",
+                                      urgency === "critical" && "text-destructive font-medium",
+                                      urgency === "low" && "text-amber-600 dark:text-amber-400"
+                                    )}
+                                  >
+                                    {urgency}
+                                  </span>
+                                )}
+                              </td>
+                              <td className="px-3 py-2 text-right">
+                                <button
+                                  type="button"
+                                  onClick={() => openDetail(task)}
+                                  className="text-xs font-medium text-primary hover:underline"
+                                >
+                                  Open →
+                                </button>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                  </tbody>
+                </table>
+              </div>
             </div>
           )}
         </div>
 
-        {/* Type filter row: horizontal scroll + Filters */}
-        <div className="relative flex items-center gap-2">
-          <div
-            className="flex flex-1 items-center gap-1 overflow-x-auto py-1 scrollbar-none"
-            role="tablist"
-            aria-label="Task type"
-          >
-            {TYPE_TABS.map(({ value, label, icon: Icon }) => (
-              <button
-                key={value}
-                type="button"
-                role="tab"
-                aria-selected={params.type === value}
-                onClick={() => setParams({ type: value })}
-                className={cn(
-                  "flex shrink-0 items-center gap-1 rounded-full border px-3 py-1 text-xs font-medium transition-colors",
-                  params.type === value
-                    ? "border-primary bg-primary text-primary-foreground"
-                    : "border-border bg-card text-muted-foreground hover:bg-muted hover:text-foreground"
-                )}
-              >
-                <Icon className="size-3.5 shrink-0" />
-                {label}
-              </button>
-            ))}
-          </div>
-          <button
-            type="button"
-            onClick={() => setFiltersOpen((o) => !o)}
-            className={cn(
-              "flex shrink-0 items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-medium transition-colors",
-              filtersOpen || activeFilterCount > 0
-                ? "border-primary bg-primary text-primary-foreground"
-                : "border-border bg-card text-muted-foreground hover:bg-muted hover:text-foreground"
-            )}
-            aria-expanded={filtersOpen}
-            aria-label="Filters"
-          >
-            <Filter className="size-3.5" />
-            Filters
-            {activeFilterCount > 0 && (
-              <span className="flex size-4 items-center justify-center rounded-full bg-primary-foreground/25 text-[10px] font-semibold">
-                {activeFilterCount}
-              </span>
-            )}
-          </button>
-          {/* Gradient mask for scroll hint */}
-          <div className="pointer-events-none absolute left-0 top-0 h-full w-4 shrink-0 bg-gradient-to-r from-background to-transparent" aria-hidden />
-          <div className="pointer-events-none absolute right-14 top-0 h-full w-4 shrink-0 bg-gradient-to-l from-background to-transparent" aria-hidden />
-        </div>
-
-        {filtersOpen && (
-          <FeedFiltersPanel
-            filters={advancedFilters}
-            onFiltersChange={setAdvancedFilters}
-            onApply={handleApplyFilters}
-            onClear={handleClearFilters}
-            isOpen={true}
-          />
+        {!isMobile && detailOpen && selectedTask && (
+          <aside className="hidden w-full max-w-[min(24rem,90vw)] shrink-0 border-l border-border bg-card md:block">
+            <div className="sticky top-0 flex h-full flex-col">
+              <div className="flex items-center justify-between border-b border-border p-4">
+                <h2 className="font-display text-lg font-semibold text-foreground">Task details</h2>
+                <Button variant="ghost" size="icon" onClick={closeDetail} aria-label="Close">
+                  ×
+                </Button>
+              </div>
+              <div className="flex-1 overflow-hidden">
+                <TaskDetailPanel task={selectedTask} onClose={closeDetail} />
+              </div>
+            </div>
+          </aside>
         )}
-
-        {/* Main content */}
-        <div className="flex min-h-0 flex-1 gap-0">
-          <div className="flex min-w-0 flex-1 flex-col">
-            {tasksLoading && !isPlaceholderData && (
-              <>
-                {viewMode === "card" && (
-                  <div className="grid grid-cols-1 gap-0 divide-y divide-border md:grid-cols-2">
-                    {[1, 2, 3, 4].map((i) => (
-                      <TaskCardSkeleton key={i} />
-                    ))}
-                  </div>
-                )}
-                {viewMode === "table" && !isMobile && (
-                  <div className="overflow-x-auto rounded-lg border border-border">
-                    <table className="w-full min-w-[700px] border-collapse">
-                      <thead className="sticky top-0 z-10 border-b border-border bg-muted/50">
-                        <tr className="h-10 text-left text-xs font-medium text-muted-foreground">
-                          <th className="px-3 py-2">Title</th>
-                          <th className="px-3 py-2">Type</th>
-                          <th className="px-3 py-2">Reward</th>
-                          <th className="px-3 py-2">Slots left</th>
-                          <th className="px-3 py-2">Filled %</th>
-                          <th className="px-3 py-2">Expires</th>
-                          <th className="px-3 py-2">Status</th>
-                          <th className="px-3 py-2">Action</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {[1, 2, 3, 4, 5, 6].map((i) => (
-                          <TableRowSkeleton key={i} />
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
-              </>
-            )}
-            {error && (
-              <div className="flex flex-1 items-center justify-center py-12">
-                <p className="text-sm text-destructive">{error.message ?? "Failed to load tasks."}</p>
-              </div>
-            )}
-            {!tasksLoading && !error && isEmpty && (
-              <div className="flex flex-1 flex-col items-center justify-center py-12 text-center">
-                {emptyBecauseSearch && (
-                  <>
-                    <div className="rounded-full bg-muted p-4">
-                      <Search className="size-10 text-muted-foreground" />
-                    </div>
-                    <h2 className="mt-4 font-display text-lg font-semibold text-foreground">
-                      No tasks match &quot;{searchQuery.trim()}&quot;
-                    </h2>
-                    <Button variant="link" className="mt-1 text-primary" onClick={handleClearSearch}>
-                      Clear search
-                    </Button>
-                  </>
-                )}
-                {emptyAllClaimed && (
-                  <>
-                    <div className="rounded-full bg-muted p-4">
-                      <Check className="size-10 text-muted-foreground" />
-                    </div>
-                    <h2 className="mt-4 font-display text-lg font-semibold text-foreground">
-                      You&apos;ve submitted all available tasks!
-                    </h2>
-                    <p className="mt-1 text-sm text-muted-foreground">Check back soon.</p>
-                  </>
-                )}
-                {emptyBecauseType && (
-                  (() => {
-                    const { icon: Icon, msg } = EMPTY_TYPE[params.type as TaskType];
-                    return (
-                      <>
-                        <div className="rounded-full bg-muted p-4">
-                          <Icon className="size-10 text-muted-foreground" />
-                        </div>
-                        <h2 className="mt-4 font-display text-lg font-semibold text-foreground">{msg}</h2>
-                      </>
-                    );
-                  })()
-                )}
-                {!emptyBecauseSearch && !emptyAllClaimed && !emptyBecauseType && (
-                  <>
-                    <div className="rounded-full bg-muted p-4">
-                      <Inbox className="size-10 text-muted-foreground" />
-                    </div>
-                    <h2 className="mt-4 font-display text-lg font-semibold text-foreground">No tasks available</h2>
-                    <p className="mt-1 text-sm text-muted-foreground">Check back soon.</p>
-                  </>
-                )}
-              </div>
-            )}
-            {!tasksLoading && !error && list.length > 0 && (
-              <>
-                {viewMode === "card" || isMobile ? (
-                  <div
-                    ref={scrollParentRef}
-                    className={cn(
-                      "flex-1 overflow-auto overflow-x-hidden",
-                      useVirtual && "min-h-0"
-                    )}
-                  >
-                    {useVirtual ? (
-                      <div
-                        style={{
-                          height: `${virtualizer.getTotalSize()}px`,
-                          width: "100%",
-                          position: "relative",
-                        }}
-                      >
-                        {virtualizer.getVirtualItems().map((virtualRow) => {
-                          const i = virtualRow.index;
-                          const task1 = list[i * 2];
-                          const task2 = list[i * 2 + 1];
-                          return (
-                            <div
-                              key={i}
-                              style={{
-                                position: "absolute",
-                                top: 0,
-                                left: 0,
-                                width: "100%",
-                                height: `${virtualRow.size}px`,
-                                transform: `translateY(${virtualRow.start}px)`,
-                              }}
-                              className="grid grid-cols-1 divide-y divide-border md:grid-cols-2 md:divide-y-0 md:divide-x md:divide-border"
-                            >
-                              {task1 && (
-                                <div className="p-2">
-                                  <TaskCard
-                                    task={task1}
-                                    onClick={() => openDetail(task1)}
-                                    isSelected={selectedTask?.id === task1.id}
-                                    workerStatus={(taskIdToStatus.get(task1.id) ?? null) as WorkerSubmissionStatus}
-                                    compact
-                                  />
-                                </div>
-                              )}
-                              {task2 && (
-                                <div className="p-2">
-                                  <TaskCard
-                                    task={task2}
-                                    onClick={() => openDetail(task2)}
-                                    isSelected={selectedTask?.id === task2.id}
-                                    workerStatus={(taskIdToStatus.get(task2.id) ?? null) as WorkerSubmissionStatus}
-                                    compact
-                                  />
-                                </div>
-                              )}
-                            </div>
-                          );
-                        })}
-                      </div>
-                    ) : (
-                      <div className="grid grid-cols-1 divide-y divide-border md:grid-cols-2">
-                        {list.map((task) => {
-                          const workerStatus = (taskIdToStatus.get(task.id) ?? null) as WorkerSubmissionStatus;
-                          return (
-                            <div key={task.id} className="p-2">
-                              <TaskCard
-                                task={task}
-                                onClick={() => openDetail(task)}
-                                isSelected={selectedTask?.id === task.id}
-                                workerStatus={workerStatus}
-                                compact
-                              />
-                            </div>
-                          );
-                        })}
-                      </div>
-                    )}
-                  </div>
-                ) : (
-                  <div ref={scrollParentRef} className="flex-1 overflow-auto min-h-0">
-                    <div className="overflow-x-auto">
-                      <table className="w-full min-w-[700px] border-collapse">
-                        <thead className="sticky top-0 z-10 border-b border-border bg-muted/50">
-                          <tr className="h-10 text-left text-xs font-medium text-muted-foreground">
-                            <th className="px-3 py-2">Title</th>
-                            <th className="px-3 py-2">Type</th>
-                            <th className="px-3 py-2">Reward</th>
-                            <th className="px-3 py-2">Slots left</th>
-                            <th className="px-3 py-2">Filled %</th>
-                            <th className="px-3 py-2">Expires</th>
-                            <th className="px-3 py-2">Status</th>
-                            <th className="px-3 py-2">Action</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {list.map((task, idx) => {
-                            const slotsLeft = task.totalSlots - task.filledSlots;
-                            const pctFilled = task.totalSlots > 0 ? (task.filledSlots / task.totalSlots) * 100 : 0;
-                            const status = taskIdToStatus.get(task.id);
-                            const urgency = slotsUrgency(slotsLeft, task.totalSlots);
-                            return (
-                              <tr
-                                key={task.id}
-                                className={cn(
-                                  "h-10 border-b border-border text-sm transition-colors hover:bg-muted/50",
-                                  idx % 2 === 0 && "bg-muted/30"
-                                )}
-                              >
-                                <td className="max-w-[180px] truncate px-3 py-2" title={task.title}>
-                                  <Tooltip content={task.title}>
-                                    <span className="block truncate font-medium">{task.title}</span>
-                                  </Tooltip>
-                                </td>
-                                <td className="px-3 py-2">
-                                  <span
-                                    className={cn(
-                                      "inline-flex rounded-full border border-current/20 px-2 py-0.5 text-[11px] font-medium",
-                                      TYPE_BADGE[task.type]
-                                    )}
-                                  >
-                                    {TYPE_LABELS[task.type]}
-                                  </span>
-                                </td>
-                                <td className="px-3 py-2 font-medium text-primary">
-                                  {formatRewardCents(task.reward)}
-                                </td>
-                                <td
-                                  className={cn(
-                                    "px-3 py-2 tabular-nums",
-                                    urgency === "critical" && "text-amber-600 dark:text-amber-400"
-                                  )}
-                                >
-                                  {slotsLeft}
-                                </td>
-                                <td className="px-3 py-2">
-                                  <div className="flex items-center gap-2">
-                                    <div className="h-1.5 w-16 min-w-16 overflow-hidden rounded-full bg-muted">
-                                      <div
-                                        className={cn(
-                                          "h-full rounded-full",
-                                          pctFilled >= 90 ? "bg-destructive" : pctFilled >= 50 ? "bg-amber-500" : "bg-green-500"
-                                        )}
-                                        style={{ width: `${pctFilled}%` }}
-                                      />
-                                    </div>
-                                    <span className="text-xs tabular-nums">{Math.round(pctFilled)}%</span>
-                                  </div>
-                                </td>
-                                <td className="px-3 py-2 text-xs text-muted-foreground">
-                                  {expiresRelative(task.expiresAt)}
-                                </td>
-                                <td className="px-3 py-2">
-                                  {status ? (
-                                    <span
-                                      className={cn(
-                                        "inline-flex rounded-full px-2 py-0.5 text-[11px] font-medium",
-                                        status === "approved" && "bg-green-500/15 text-green-700 dark:text-green-200",
-                                        status === "pending" && "bg-amber-500/15 text-amber-700 dark:text-amber-200",
-                                        status === "rejected" && "bg-destructive/15 text-destructive"
-                                      )}
-                                    >
-                                      {status === "approved" ? "Approved" : status === "pending" ? "Submitted" : "Rejected"}
-                                    </span>
-                                  ) : (
-                                    <span
-                                      className={cn(
-                                        "text-xs",
-                                        urgency === "critical" && "text-amber-600 dark:text-amber-400",
-                                        urgency === "low" && "text-muted-foreground"
-                                      )}
-                                    >
-                                      {urgency === "critical" ? "Critical" : urgency === "low" ? "Low" : "Normal"}
-                                    </span>
-                                  )}
-                                </td>
-                                <td className="px-3 py-2">
-                                  <Button
-                                    variant="link"
-                                    size="sm"
-                                    className="h-auto p-0 text-xs text-primary"
-                                    onClick={() => openDetail(task)}
-                                  >
-                                    Open →
-                                  </Button>
-                                </td>
-                              </tr>
-                            );
-                          })}
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
-                )}
-              </>
-            )}
-          </div>
-
-          {!isMobile && detailOpen && selectedTask && (
-            <aside className="hidden w-full max-w-[min(24rem,90vw)] shrink-0 border-l border-border bg-card md:block">
-              <div className="sticky top-0 flex h-full flex-col">
-                <div className="flex items-center justify-between border-b border-border p-4">
-                  <h2 className="font-display text-lg font-semibold text-foreground">Task details</h2>
-                  <Button variant="ghost" size="icon" onClick={closeDetail} aria-label="Close">
-                    ×
-                  </Button>
-                </div>
-                <div className="flex-1 overflow-hidden">
-                  <TaskDetailPanel task={selectedTask} onClose={closeDetail} />
-                </div>
-              </div>
-            </aside>
-          )}
-
-          {isMobile && (
-            <SheetRoot open={detailOpen} onOpenChange={(open) => !open && closeDetail()}>
-              <SheetContent side="bottom" showCloseButton className="max-h-[85vh] flex flex-col p-0">
-                <SheetHeader className="shrink-0 border-b border-border p-4">
-                  <SheetTitle>Task details</SheetTitle>
-                </SheetHeader>
-                <SheetBody className="min-h-0 flex-1 overflow-auto">
-                  {selectedTask && <TaskDetailPanel task={selectedTask} onClose={closeDetail} />}
-                </SheetBody>
-              </SheetContent>
-            </SheetRoot>
-          )}
-        </div>
       </div>
+
+      {isMobile && (
+        <SheetRoot open={detailOpen} onOpenChange={(open) => !open && closeDetail()}>
+          <SheetContent side="bottom" showCloseButton className="max-h-[85vh] flex flex-col p-0">
+            <SheetHeader className="shrink-0 border-b border-border p-4">
+              <SheetTitle>Task details</SheetTitle>
+            </SheetHeader>
+            <SheetBody className="min-h-0 flex-1 overflow-auto">
+              {selectedTask && <TaskDetailPanel task={selectedTask} onClose={closeDetail} />}
+            </SheetBody>
+          </SheetContent>
+        </SheetRoot>
+      )}
+    </div>
   );
 }
