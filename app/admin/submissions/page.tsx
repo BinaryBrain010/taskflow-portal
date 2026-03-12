@@ -13,7 +13,7 @@ import { STATUS_STYLES, formatTime, TaskTypeBadge } from "@/components/admin-sub
 import { SubmissionDetailSidebar } from "@/components/admin-submissions/SubmissionDetailSidebar";
 import { SubmissionsEmptyState } from "@/components/admin-submissions/SubmissionsEmptyState";
 import { TaskSearchSelect } from "@/components/admin-submissions/TaskSearchSelect";
-import { FilterDatePicker } from "@/components/admin-submissions/FilterDatePicker";
+import { FilterDateRangePicker } from "@/components/admin-submissions/FilterDateRangePicker";
 import { SelectDropdown } from "@/components/ui/select-dropdown";
 import {
   SheetRoot,
@@ -104,7 +104,8 @@ export default function AdminSubmissionsPage() {
   const [params, setParams] = useQueryStates(parsers);
   const [selected, setSelected] = useState<Submission | null>(null);
   const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
-  const [collapsedTasks, setCollapsedTasks] = useState<Set<string>>(new Set());
+  // Track expanded task ids (empty = all collapsed by default)
+  const [expandedTasks, setExpandedTasks] = useState<Set<string>>(new Set());
   const [searchQuery, setSearchQuery] = useState("");
   const isMobile = useIsMobile();
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -122,7 +123,7 @@ export default function AdminSubmissionsPage() {
     [params.status, params.taskId, params.workerId, params.dateFrom, params.dateTo, params.view]
   );
 
-  const { data: submissions = [], isLoading, error } = useSubmissionsQuery(filters);
+  const { data: submissions = [], isLoading, isFetching, error } = useSubmissionsQuery(filters);
   const { data: tasks = [] } = useTasksQuery();
 
   const statusCounts = useMemo(() => {
@@ -169,6 +170,15 @@ export default function AdminSubmissionsPage() {
     }));
   }, [filteredSorted]);
 
+  // Stable key so effect only runs when the set of task ids actually changes (avoids infinite loop from array reference churn)
+  const groupedTaskIdsKey = useMemo(
+    () => grouped.map((g) => g.taskId).sort().join(","),
+    [grouped]
+  );
+  useEffect(() => {
+    setExpandedTasks(new Set());
+  }, [groupedTaskIdsKey]);
+
   const flatItems = filteredSorted;
 
   const hasActiveFilters =
@@ -181,8 +191,8 @@ export default function AdminSubmissionsPage() {
     setParams({ taskId: "", workerId: "", dateFrom: "", dateTo: "" });
   };
 
-  const expandAll = () => setCollapsedTasks(new Set());
-  const collapseAll = () => setCollapsedTasks(new Set(grouped.map((g) => g.taskId)));
+  const expandAll = () => setExpandedTasks(new Set(grouped.map((g) => g.taskId)));
+  const collapseAll = () => setExpandedTasks(new Set());
 
   const handleReviewed = useCallback(
     (submission: Submission) => {
@@ -227,7 +237,7 @@ export default function AdminSubmissionsPage() {
   }, [toast]);
 
   const toggleTask = (taskId: string) => {
-    setCollapsedTasks((prev) => {
+    setExpandedTasks((prev) => {
       const next = new Set(prev);
       if (next.has(taskId)) next.delete(taskId);
       else next.add(taskId);
@@ -360,18 +370,12 @@ export default function AdminSubmissionsPage() {
           <SelectDropdown.Trigger className="h-8 min-w-[100px] rounded border border-input px-2 text-xs" />
           <SelectDropdown.Content />
         </SelectDropdown.Root>
-        <div className="[&_button]:h-8 [&_button]:min-w-[72px] [&_button]:rounded [&_button]:px-2 [&_button]:text-xs">
-          <FilterDatePicker
-            value={params.dateFrom}
-            onChange={(v) => setParams({ dateFrom: v })}
-            placeholder="From"
-          />
-        </div>
-        <div className="[&_button]:h-8 [&_button]:min-w-[72px] [&_button]:rounded [&_button]:px-2 [&_button]:text-xs">
-          <FilterDatePicker
-            value={params.dateTo}
-            onChange={(v) => setParams({ dateTo: v })}
-            placeholder="To"
+        <div className="[&_button]:h-8 [&_button]:min-w-[140px] [&_button]:rounded [&_button]:px-2 [&_button]:text-xs">
+          <FilterDateRangePicker
+            dateFrom={params.dateFrom}
+            dateTo={params.dateTo}
+            onChange={({ dateFrom, dateTo }) => setParams({ dateFrom, dateTo })}
+            placeholder="Date range"
           />
         </div>
         <div
@@ -382,7 +386,8 @@ export default function AdminSubmissionsPage() {
         >
           <Search className="pointer-events-none absolute left-2 size-3.5 text-muted-foreground" />
           <input
-            type="search"
+            type="text"
+            role="search"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             onFocus={() => setSearchFocused(true)}
@@ -397,7 +402,10 @@ export default function AdminSubmissionsPage() {
           {searchQuery && (
             <button
               type="button"
-              onClick={() => setSearchQuery("")}
+              onClick={(e) => {
+                e.preventDefault();
+                setSearchQuery("");
+              }}
               aria-label="Clear search"
               className="absolute right-1.5 rounded p-0.5 text-muted-foreground hover:bg-muted hover:text-foreground"
             >
@@ -405,15 +413,22 @@ export default function AdminSubmissionsPage() {
             </button>
           )}
         </div>
-        {hasActiveFilters && (
-          <button
-            type="button"
-            onClick={clearFilters}
-            className="text-xs text-muted-foreground hover:text-foreground"
-          >
-            Clear filters
-          </button>
-        )}
+        <span
+          className={cn(
+            "inline-block transition-opacity duration-200",
+            hasActiveFilters ? "opacity-100" : "h-0 w-0 overflow-hidden opacity-0 pointer-events-none"
+          )}
+        >
+          {hasActiveFilters && (
+            <button
+              type="button"
+              onClick={clearFilters}
+              className="text-xs text-muted-foreground hover:text-foreground"
+            >
+              Clear filters
+            </button>
+          )}
+        </span>
       </div>
 
       {toast && (
@@ -430,19 +445,31 @@ export default function AdminSubmissionsPage() {
         </div>
       )}
 
-      {isLoading && (
-        <div className="flex flex-1 items-center justify-center py-12">
-          <p className="text-sm text-muted-foreground">Loading submissions…</p>
-        </div>
-      )}
       {error && (
         <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-4">
           <p className="text-sm text-destructive">{error.message ?? "Failed to load submissions."}</p>
         </div>
       )}
 
-      {!isLoading && !error && (
-        <div className="flex min-h-0 flex-1 gap-0">
+      {!error && (
+        <div className="relative flex min-h-0 flex-1 flex-col gap-0">
+          {isFetching && (
+            <div
+              className="absolute left-0 right-0 top-0 z-20 h-0.5 overflow-hidden rounded-full bg-teal-200"
+              aria-hidden
+            >
+              <div
+                className="h-full w-1/3 rounded-full bg-teal-500"
+                style={{ animation: "loading-bar 1.2s ease-in-out infinite" }}
+              />
+            </div>
+          )}
+          {isLoading && submissions.length === 0 ? (
+            <div className="flex flex-1 items-center justify-center py-12">
+              <p className="text-sm text-muted-foreground">Loading submissions…</p>
+            </div>
+          ) : (
+        <div key={params.status} className="flex min-h-0 flex-1 gap-0 transition-opacity duration-200">
           <div className="min-w-0 flex-1">
             {params.view === "grouped" ? (
               <div className="overflow-y-auto pr-1">
@@ -451,7 +478,7 @@ export default function AdminSubmissionsPage() {
                 ) : (
                   <div className="space-y-0">
                   {grouped.map(({ taskId, taskTitle, taskType, submissions: list }) => {
-                    const isExpanded = !collapsedTasks.has(taskId);
+                    const isExpanded = expandedTasks.has(taskId);
                     const borderColor = taskType != null ? TYPE_BORDER_COLORS[taskType] : "";
                     return (
                       <div
@@ -477,7 +504,7 @@ export default function AdminSubmissionsPage() {
                           </span>
                           {taskType != null && (
                             <span className={cn(
-                              "rounded border border-current/20 px-2 py-0.5 text-xs font-medium",
+                              "shrink-0 rounded border border-current/20 px-2 py-0.5 text-[11px] font-medium whitespace-nowrap",
                               taskType === "survey" && "bg-indigo-500/10 text-indigo-700 dark:text-indigo-400",
                               taskType === "content_review" && "bg-violet-500/10 text-violet-700 dark:text-violet-400",
                               taskType === "data_labeling" && "bg-orange-500/10 text-orange-700 dark:text-orange-400",
@@ -503,7 +530,7 @@ export default function AdminSubmissionsPage() {
                                 onClick={() => setSelected(s)}
                                 onKeyDown={(e) => e.key === "Enter" && setSelected(s)}
                                 className={cn(
-                                  "grid grid-cols-[1fr_auto_auto_auto_auto] items-center gap-2 py-1.5 pl-6 pr-2 transition-colors hover:bg-muted/30",
+                                  "grid cursor-pointer grid-cols-[1fr_auto_auto_auto_auto] items-center gap-2 py-1.5 pl-6 pr-2 transition-colors hover:bg-muted/30",
                                   selected?.id === s.id && "bg-primary/5",
                                   idx % 2 === 1 && "bg-muted/20"
                                 )}
@@ -579,7 +606,7 @@ export default function AdminSubmissionsPage() {
                 ) : (
                   <>
                     {/* Table header */}
-                    <div className="sticky top-0 z-10 grid grid-cols-[1fr_1fr_80px_80px_80px_48px_64px] gap-2 border-b border-border bg-card px-3 py-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                    <div className="sticky top-0 z-10 grid grid-cols-[1fr_1fr_7rem_80px_80px_48px_64px] gap-2 border-b border-border bg-card px-3 py-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
                       <span>Worker</span>
                       <span>Task</span>
                       <span>Type</span>
@@ -635,6 +662,8 @@ export default function AdminSubmissionsPage() {
                 </div>
               </div>
             </aside>
+          )}
+        </div>
           )}
         </div>
       )}
@@ -717,7 +746,7 @@ function VirtualizedFlatList({
               transform: `translateY(${virtualRow.start}px)`,
             }}
             className={cn(
-              "grid cursor-pointer grid-cols-[1fr_1fr_80px_80px_80px_48px_64px] items-center gap-2 border-b border-border/80 px-3 py-1.5 text-sm transition-colors hover:bg-muted/40",
+              "grid cursor-pointer grid-cols-[1fr_1fr_7rem_80px_80px_48px_64px] items-center gap-2 border-b border-border/80 px-3 py-1.5 text-sm transition-colors hover:bg-muted/40",
               selectedId === s.id && "bg-primary/5 ring-inset ring-1 ring-primary/20"
             )}
             onClick={() => onSelect(s)}

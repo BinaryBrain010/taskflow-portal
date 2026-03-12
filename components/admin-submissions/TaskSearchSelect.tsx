@@ -1,7 +1,7 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { ChevronDown } from "lucide-react";
+import { useMemo, useState, useRef, useEffect } from "react";
+import { ChevronDown, Loader2 } from "lucide-react";
 import type { Task } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
@@ -13,6 +13,7 @@ export function TaskSearchSelect({
   className,
   id,
   placeholder = "All tasks",
+  isFetching,
 }: {
   value: string;
   onChange: (value: string) => void;
@@ -21,9 +22,13 @@ export function TaskSearchSelect({
   className?: string;
   id?: string;
   placeholder?: string;
+  /** When true, show spinner in trigger instead of chevron (e.g. submissions loading). */
+  isFetching?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
+  const containerRef = useRef<HTMLDivElement>(null);
+
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     if (!q) return tasks.slice(0, 50);
@@ -33,8 +38,20 @@ export function TaskSearchSelect({
   }, [tasks, query]);
   const selectedTask = value ? tasks.find((t) => t.id === value) : null;
 
+  // Close when clicking outside (blur would fire when focus moves to the dropdown input, so we use click-outside)
+  useEffect(() => {
+    if (!open) return;
+    function handleClickOutside(e: MouseEvent) {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [open]);
+
   return (
-    <div className={cn("relative", className)}>
+    <div ref={containerRef} className={cn("relative", className)}>
       <button
         type="button"
         id={id}
@@ -42,7 +59,6 @@ export function TaskSearchSelect({
         aria-haspopup="listbox"
         disabled={disabled}
         onClick={() => setOpen((o) => !o)}
-        onBlur={() => setTimeout(() => setOpen(false), 150)}
         className={cn(
           "flex h-9 w-full min-w-[160px] items-center justify-between rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm",
           "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
@@ -51,10 +67,14 @@ export function TaskSearchSelect({
         )}
       >
         <span className="truncate">{selectedTask?.title ?? placeholder}</span>
-        <ChevronDown className="size-4 shrink-0 opacity-60" />
+        {isFetching ? (
+          <Loader2 className="size-4 shrink-0 animate-spin opacity-60" aria-hidden />
+        ) : (
+          <ChevronDown className="size-4 shrink-0 opacity-60" />
+        )}
       </button>
       {open && (
-        <div className="absolute top-full z-10 mt-1 w-full min-w-[200px] rounded-md border border-border bg-popover shadow-lg">
+        <div className="absolute top-full z-50 mt-1 w-full min-w-[200px] rounded-md border border-border bg-popover shadow-lg">
           <input
             type="text"
             value={query}

@@ -1,7 +1,7 @@
 "use client";
 
 import { createContext, useContext, useRef, useState } from "react";
-import { ChevronDown, Search } from "lucide-react";
+import { ChevronDown, Loader2, Search } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface SelectOption {
@@ -16,6 +16,7 @@ interface SelectDropdownContextValue {
   setOpen: (open: boolean) => void;
   options: SelectOption[];
   displayValue: string;
+  loading?: boolean;
 }
 
 const SelectDropdownContext = createContext<SelectDropdownContextValue | null>(null);
@@ -33,9 +34,10 @@ interface RootProps {
   children: React.ReactNode;
   placeholder?: string;
   className?: string;
+  loading?: boolean;
 }
 
-function Root({ value, onValueChange, options, children, placeholder = "Select…", className }: RootProps) {
+function Root({ value, onValueChange, options, children, placeholder = "Select…", className, loading }: RootProps) {
   const [open, setOpen] = useState(false);
   const displayValue = options.find((o) => o.value === value)?.label ?? placeholder;
   return (
@@ -47,6 +49,7 @@ function Root({ value, onValueChange, options, children, placeholder = "Select�
         setOpen,
         options,
         displayValue,
+        loading,
       }}
     >
       <div className={cn("relative", className)}>{children}</div>
@@ -61,7 +64,7 @@ interface TriggerProps {
 }
 
 function Trigger({ children, className, showSearchIcon }: TriggerProps) {
-  const { value, open, setOpen, displayValue } = useSelectContext();
+  const { value, open, setOpen, displayValue, loading } = useSelectContext();
   const ref = useRef<HTMLButtonElement>(null);
   const label = displayValue || (children ?? value ?? "");
   return (
@@ -81,7 +84,11 @@ function Trigger({ children, className, showSearchIcon }: TriggerProps) {
     >
       {showSearchIcon && <Search className="size-4 shrink-0 text-muted-foreground" />}
       <span className="min-w-0 flex-1 truncate text-left">{label}</span>
-      <ChevronDown className={cn("size-4 shrink-0 text-muted-foreground transition-transform", open && "rotate-180")} />
+      {loading ? (
+        <Loader2 className="size-4 shrink-0 animate-spin text-muted-foreground" aria-hidden />
+      ) : (
+        <ChevronDown className={cn("size-4 shrink-0 text-muted-foreground transition-transform", open && "rotate-180")} />
+      )}
     </button>
   );
 }

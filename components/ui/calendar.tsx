@@ -52,11 +52,11 @@ function Calendar({
       "size-8 rounded-full font-normal transition-colors duration-100 cursor-pointer hover:bg-muted hover:rounded-full aria-selected:opacity-100"
     ),
     selected: "!bg-teal-600 !text-white rounded-full hover:!bg-teal-600 focus:!bg-teal-600",
-    today: "rounded-full bg-teal-50 border border-teal-300 font-medium text-teal-700",
+    today: "", // today indicator is a dot below the date, styled in DayButton
     outside: "text-muted-foreground/50",
     disabled: "text-muted-foreground/50 opacity-50 cursor-not-allowed",
     hidden: "invisible",
-    range_middle: "bg-teal-50",
+    range_middle: "bg-teal-50 text-teal-900 rounded-none",
     range_start: "rounded-l-full",
     range_end: "rounded-r-full",
     ...classNamesProp,
@@ -114,7 +114,11 @@ function Calendar({
     React.useEffect(() => {
       if (modifiers.focused) ref.current?.focus();
     }, [modifiers.focused]);
-    const isSelected = modifiers.selected || modifiers.range_start || modifiers.range_end;
+    const isRangeEnd = modifiers.range_start || modifiers.range_end;
+    const isSelected = modifiers.selected || isRangeEnd;
+    const isRangeMiddle = modifiers.range_middle && !isRangeEnd;
+    // When only from is selected (range_start, no range_end), pulse to indicate waiting for "to"
+    const isRangeStartOnly = modifiers.range_start && !modifiers.range_end && !modifiers.range_middle;
     return (
       <Button
         ref={ref}
@@ -122,13 +126,14 @@ function Calendar({
         size="icon"
         type="button"
         className={cn(
-          "size-8 rounded-full font-normal transition-colors duration-100 cursor-pointer hover:rounded-full",
-          !isSelected && "hover:bg-muted",
-          isSelected && "!bg-teal-600 !text-white hover:!bg-teal-600 focus:!bg-teal-600",
+          "size-8 font-normal transition-colors duration-100 cursor-pointer",
+          "rounded-full",
+          !isSelected && !isRangeMiddle && "hover:bg-muted hover:rounded-full",
+          isSelected && "!bg-teal-600 !text-white hover:!bg-teal-600 focus:!bg-teal-600 w-8 h-8",
           modifiers.range_start && "rounded-l-full",
           modifiers.range_end && "rounded-r-full",
-          modifiers.range_middle && !isSelected && "bg-teal-50",
-          modifiers.today && !isSelected && "rounded-full bg-teal-50 border border-teal-300 font-medium text-teal-700",
+          isRangeStartOnly && "animate-pulse",
+          isRangeMiddle && "!bg-teal-50 !text-teal-900 rounded-none hover:!bg-teal-50",
           modifiers.outside && "text-muted-foreground/50",
           dayClassName
         )}
@@ -137,7 +142,15 @@ function Calendar({
         data-outside={modifiers.outside ? true : undefined}
         {...rest}
       >
-        {children}
+        <span className="flex flex-col items-center justify-center gap-0.5">
+          <span>{children}</span>
+          {modifiers.today && (
+            <span
+              className="size-1 rounded-full bg-teal-500 shrink-0"
+              aria-hidden
+            />
+          )}
+        </span>
       </Button>
     );
   };

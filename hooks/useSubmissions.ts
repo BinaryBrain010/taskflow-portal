@@ -38,6 +38,7 @@ export function useSubmissionsQuery(
   return useQuery({
     queryKey: submissionKeys.list(filters),
     queryFn: () => getSubmissions(filters),
+    placeholderData: (previousData) => previousData,
     ...options,
   });
 }
