@@ -1,5 +1,7 @@
 # TaskFlow — Micro-task Marketplace
 
+**v1.0.0** — Production-ready demo release.
+
 A demo micro-task marketplace: **admins** create and manage tasks and review submissions; **workers** browse tasks and submit work. Built with Next.js (App Router), React, TypeScript, Tailwind, and a customized design system. All data is stored in **localStorage** with simulated API delays.
 
 ---
