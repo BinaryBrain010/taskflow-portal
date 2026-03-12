@@ -4,6 +4,7 @@ import React, {
   useMemo,
   useState,
   useCallback,
+  useEffect,
 } from "react";
 import Link from "next/link";
 import {
@@ -14,21 +15,19 @@ import {
   type SortingState,
 } from "@tanstack/react-table";
 import { useQueryStates, parseAsStringLiteral, parseAsString, parseAsInteger } from "nuqs";
-import {
-  ChevronDown,
-  ChevronRight,
-  Pencil,
-  Trash2,
-  ListChecks,
-} from "lucide-react";
+import { Pencil, Trash2, ListChecks, Search, X } from "lucide-react";
+import { useRouter } from "next/navigation";
 import type { Task, TaskType, TaskStatus } from "@/lib/types";
 import { useTasksQuery, useDeleteTasks, useBulkUpdateTasks } from "@/hooks/useTasks";
 import { mockCampaigns } from "@/lib/mock/mockCampaigns";
-import { TaskRowExpansion } from "@/components/admin-tasks/TaskRowExpansion";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
+import { SelectDropdown } from "@/components/ui/select-dropdown";
+import { FilterDateRangePicker } from "@/components/admin-submissions/FilterDateRangePicker";
+import { CampaignSearchSelect } from "@/components/admin-tasks/CampaignSearchSelect";
+import { Tooltip } from "@/components/ui/tooltip";
 import {
   ConfirmDialogRoot,
   ConfirmDialogContent,
@@ -56,6 +55,20 @@ const TYPE_LABELS: Record<TaskType, string> = {
   transcription: "Transcription",
 };
 
+const TYPE_BADGE_STYLES: Record<TaskType, string> = {
+  survey: "border border-indigo-300 bg-indigo-500/15 text-indigo-700 dark:border-indigo-500/40 dark:bg-indigo-900/50 dark:text-indigo-200",
+  content_review: "border border-violet-300 bg-violet-500/15 text-violet-700 dark:border-violet-500/40 dark:bg-violet-900/50 dark:text-violet-200",
+  data_labeling: "border border-orange-300 bg-orange-500/15 text-orange-700 dark:border-orange-500/40 dark:bg-orange-900/50 dark:text-orange-200",
+  transcription: "border border-cyan-300 bg-cyan-500/15 text-cyan-700 dark:border-cyan-500/40 dark:bg-cyan-900/50 dark:text-cyan-200",
+};
+
+const STATUS_BADGE_STYLES: Record<TaskStatus, string> = {
+  active: "bg-green-500/15 text-green-700 dark:bg-green-900/50 dark:text-green-200",
+  paused: "bg-amber-500/15 text-amber-700 dark:bg-amber-900/50 dark:text-amber-200",
+  closed: "bg-muted text-muted-foreground",
+  draft: "bg-blue-500/15 text-blue-700 dark:bg-blue-900/50 dark:text-blue-200",
+};
+
 function formatReward(cents: number): string {
   return `$${(cents / 100).toFixed(2)}`;
 }
@@ -69,10 +82,29 @@ function formatDate(iso: string | null): string {
   });
 }
 
+function EmptyCell() {
+  return <span className="italic text-muted-foreground">—</span>;
+}
+
 function getCampaignName(id: string | null): string {
-  if (!id) return "—";
+  if (!id) return "";
   return mockCampaigns.find((c) => c.id === id)?.name ?? id;
 }
+
+const FILTER_TYPE_OPTIONS = [
+  { value: "all", label: "All types" },
+  ...TASK_TYPES.map((t) => ({ value: t.value, label: TYPE_LABELS[t.value] })),
+];
+
+const FILTER_STATUS_OPTIONS = [
+  { value: "all", label: "All status" },
+  ...TASK_STATUSES.map((t) => ({ value: t.value, label: t.value.charAt(0).toUpperCase() + t.value.slice(1) })),
+];
+
+const SORT_OPTIONS = [
+  { value: "createdAt-desc", label: "Newest first" },
+  { value: "createdAt-asc", label: "Oldest first" },
+];
 
 const taskFiltersParsers = {
   type: parseAsStringLiteral([
@@ -103,7 +135,7 @@ const PAGE_SIZES = [10, 25, 50, 100];
 export default function AdminTasksPage() {
   const [params, setParams] = useQueryStates(taskFiltersParsers);
   const [rowSelection, setRowSelection] = useState<Record<string, boolean>>({});
-  const [expanded, setExpanded] = useState<Record<string, boolean> | true>({});
+  const router = useRouter();
   const sorting: SortingState = useMemo(
     () => [{ id: params.sortId, desc: params.sortDir === "desc" }],
     [params.sortId, params.sortDir]
@@ -114,6 +146,8 @@ export default function AdminTasksPage() {
   const [bulkCampaignOpen, setBulkCampaignOpen] = useState(false);
   const [bulkRewardValue, setBulkRewardValue] = useState("");
   const [bulkCampaignId, setBulkCampaignId] = useState("");
+  const [toast, setToast] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
 
   const filters = useMemo(
     () => ({
@@ -125,6 +159,26 @@ export default function AdminTasksPage() {
     }),
     [params.type, params.status, params.campaignId, params.expiresFrom, params.expiresTo]
   );
+
+  const hasActiveFilters =
+    params.type !== "all" ||
+    params.status !== "all" ||
+    params.campaignId !== "" ||
+    params.expiresFrom !== "" ||
+    params.expiresTo !== "" ||
+    searchQuery.trim() !== "";
+
+  const clearFilters = () => {
+    setParams({
+      type: "all",
+      status: "all",
+      campaignId: "",
+      expiresFrom: "",
+      expiresTo: "",
+      page: 1,
+    });
+    setSearchQuery("");
+  };
 
   const { data: tasks = [], isLoading, error } = useTasksQuery(filters);
   const deleteTasksMutation = useDeleteTasks();
@@ -163,6 +217,12 @@ export default function AdminTasksPage() {
     [rowSelection]
   );
 
+  useEffect(() => {
+    if (!toast) return;
+    const t = setTimeout(() => setToast(null), 3000);
+    return () => clearTimeout(t);
+  }, [toast]);
+
   const setSort = useCallback(
     (id: string, desc: boolean) => {
       setParams({ sortId: id, sortDir: desc ? "desc" : "asc", page: 1 });
@@ -197,55 +257,49 @@ export default function AdminTasksPage() {
         size: 40,
       },
       {
-        id: "expand",
-        header: () => null,
-        cell: ({ row }) => (
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              row.toggleExpanded();
-            }}
-            className="p-1 rounded hover:bg-muted"
-            aria-label={row.getIsExpanded() ? "Collapse" : "Expand"}
-          >
-            {row.getIsExpanded() ? (
-              <ChevronDown className="size-4 text-muted-foreground" />
-            ) : (
-              <ChevronRight className="size-4 text-muted-foreground" />
-            )}
-          </button>
-        ),
-        size: 36,
-      },
-      {
         accessorKey: "title",
         header: ({ column }) => (
           <SortHeader column={column} label="Title" sorting={sorting} setSort={setSort} />
         ),
-        cell: ({ getValue }) => (
-          <span className="font-medium text-foreground line-clamp-1">{getValue() as string}</span>
-        ),
+        cell: ({ row, getValue }) => {
+          const title = getValue() as string;
+          return (
+            <Tooltip content={title} side="top">
+              <span className="block max-w-[200px] truncate font-medium text-foreground">
+                {title}
+              </span>
+            </Tooltip>
+          );
+        },
       },
       {
         accessorKey: "type",
         header: ({ column }) => (
           <SortHeader column={column} label="Type" sorting={sorting} setSort={setSort} />
         ),
-        cell: ({ getValue }) => (
-          <span className="rounded-full bg-primary/15 px-2 py-0.5 text-xs font-medium text-primary">
-            {TYPE_LABELS[getValue() as TaskType]}
-          </span>
-        ),
+        cell: ({ getValue }) => {
+          const type = getValue() as TaskType;
+          return (
+            <span className={cn("inline-flex shrink-0 items-center rounded-full border border-current/20 px-2 py-0.5 text-[11px] font-medium whitespace-nowrap", TYPE_BADGE_STYLES[type])}>
+              {TYPE_LABELS[type]}
+            </span>
+          );
+        },
       },
       {
         accessorKey: "status",
         header: ({ column }) => (
           <SortHeader column={column} label="Status" sorting={sorting} setSort={setSort} />
         ),
-        cell: ({ getValue }) => (
-          <span className="capitalize text-muted-foreground">{(getValue() as string) ?? "—"}</span>
-        ),
+        cell: ({ getValue }) => {
+          const status = getValue() as TaskStatus | undefined;
+          if (status == null) return <EmptyCell />;
+          return (
+            <span className={cn("inline-flex shrink-0 items-center rounded-full border border-current/20 px-2 py-0.5 text-[11px] font-medium capitalize whitespace-nowrap", STATUS_BADGE_STYLES[status])}>
+              {status}
+            </span>
+          );
+        },
       },
       {
         accessorKey: "reward",
@@ -253,7 +307,7 @@ export default function AdminTasksPage() {
           <SortHeader column={column} label="Reward" sorting={sorting} setSort={setSort} />
         ),
         cell: ({ getValue }) => (
-          <span className="font-medium text-primary">{formatReward((getValue() as number) ?? 0)}</span>
+          <span className="font-medium text-green-700 dark:text-green-400">{formatReward((getValue() as number) ?? 0)}</span>
         ),
       },
       {
@@ -285,57 +339,71 @@ export default function AdminTasksPage() {
         header: ({ column }) => (
           <SortHeader column={column} label="Campaign" sorting={sorting} setSort={setSort} />
         ),
-        cell: ({ getValue }) => (
-          <span className="text-muted-foreground line-clamp-1 max-w-[120px]">
-            {getCampaignName(getValue() as string | null)}
-          </span>
-        ),
+        cell: ({ getValue }) => {
+          const id = getValue() as string | null;
+          const name = getCampaignName(id);
+          if (!name) return <EmptyCell />;
+          const display = name.length > 18 ? `${name.slice(0, 18)}…` : name;
+          return (
+            <Tooltip content={name} side="top">
+              <span className="max-w-[120px] truncate text-muted-foreground cursor-default block">
+                {display}
+              </span>
+            </Tooltip>
+          );
+        },
       },
       {
         accessorKey: "expiresAt",
         header: ({ column }) => (
           <SortHeader column={column} label="Expires" sorting={sorting} setSort={setSort} />
         ),
-        cell: ({ getValue }) => (
-          <span className="text-muted-foreground text-sm">{formatDate(getValue() as string | null)}</span>
-        ),
+        cell: ({ getValue }) => {
+          const iso = getValue() as string | null;
+          if (!iso) return <EmptyCell />;
+          return <span className="text-muted-foreground text-sm">{formatDate(iso)}</span>;
+        },
       },
       {
         id: "actions",
         header: () => <span className="text-muted-foreground">Actions</span>,
         cell: ({ row }) => (
           <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
-            <Link
-              href={`/admin/tasks/${row.original.id}/edit`}
-              className={buttonVariants({ variant: "ghost", size: "icon" }) + " size-8"}
-              aria-label="Edit"
-            >
-              <Pencil className="size-4" />
-            </Link>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="size-8 text-destructive hover:text-destructive"
-              onClick={() => {
-                setDeleteTargetIds([row.original.id]);
-                setDeleteConfirmOpen(true);
-              }}
-              aria-label="Delete"
-            >
-              <Trash2 className="size-4" />
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="size-8"
-              onClick={() => row.toggleExpanded()}
-              aria-label="View submissions"
-            >
-              <ListChecks className="size-4" />
-            </Button>
+            <Tooltip content="Edit" side="top">
+              <Link
+                href={`/admin/tasks/${row.original.id}/edit`}
+                className={cn(buttonVariants({ variant: "ghost", size: "icon" }), "size-7 rounded-full hover:bg-muted")}
+                aria-label="Edit"
+              >
+                <Pencil className="size-3.5" />
+              </Link>
+            </Tooltip>
+            <Tooltip content="Delete" side="top">
+              <Button
+                variant="ghost"
+                size="icon"
+                className="size-7 rounded-full text-destructive hover:bg-destructive/10 hover:text-destructive"
+                onClick={() => {
+                  setDeleteTargetIds([row.original.id]);
+                  setDeleteConfirmOpen(true);
+                }}
+                aria-label="Delete"
+              >
+                <Trash2 className="size-3.5" />
+              </Button>
+            </Tooltip>
+            <Tooltip content="View submissions" side="top">
+              <Link
+                href={`/admin/submissions?taskId=${row.original.id}`}
+                className={cn(buttonVariants({ variant: "ghost", size: "icon" }), "size-7 rounded-full hover:bg-muted")}
+                aria-label="View submissions"
+              >
+                <ListChecks className="size-3.5" />
+              </Link>
+            </Tooltip>
           </div>
         ),
-        size: 140,
+        size: 120,
       },
     ],
     [setSort, sorting]
@@ -346,12 +414,9 @@ export default function AdminTasksPage() {
     columns,
     state: {
       rowSelection,
-      expanded,
       sorting,
     },
     onRowSelectionChange: setRowSelection,
-    onExpandedChange: (updater) =>
-      setExpanded((prev) => (typeof updater === "function" ? updater(prev) : updater)),
     onSortingChange: () => {},
     getCoreRowModel: getCoreRowModel(),
     getRowId: (row) => row.id,
@@ -365,6 +430,7 @@ export default function AdminTasksPage() {
         setDeleteConfirmOpen(false);
         setDeleteTargetIds([]);
         setRowSelection({});
+        setToast(ids.length === 1 ? "Task deleted successfully" : "Tasks deleted successfully");
       },
     });
   };
@@ -405,95 +471,109 @@ export default function AdminTasksPage() {
 
   const totalPages = Math.max(1, Math.ceil(sortedTasks.length / params.pageSize));
 
+  useEffect(() => {
+    if (!toast) return;
+    const t = setTimeout(() => setToast(null), 3000);
+    return () => clearTimeout(t);
+  }, [toast]);
+
+  const sortValue = SORT_OPTIONS.some((o) => o.value === `${params.sortId}-${params.sortDir}`)
+    ? `${params.sortId}-${params.sortDir}`
+    : "createdAt-desc";
+
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <h1 className="font-display text-2xl font-semibold tracking-tight text-foreground">
+    <div className="flex min-h-0 flex-1 flex-col gap-3 px-2">
+      {/* Page header: match submissions — title + divider + count + New task */}
+      <div className="flex flex-wrap items-center gap-3 border-b border-border pb-2">
+        <h1 className="font-display text-xl font-semibold tracking-tight text-foreground">
           Tasks
         </h1>
-        <Link href="/admin/tasks/new" className={buttonVariants()}>
+        <div className="h-4 w-px shrink-0 bg-border" aria-hidden />
+        <span className="text-sm text-muted-foreground">
+          {sortedTasks.length} task{sortedTasks.length !== 1 ? "s" : ""}
+        </span>
+        <Link href="/admin/tasks/new" className={cn(buttonVariants(), "ml-auto")}>
           New task
         </Link>
       </div>
 
-      {/* Filters */}
-      <div className="rounded-lg border border-border bg-card p-4">
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
-          <div>
-            <Label htmlFor="filter-type">Type</Label>
-            <select
-              id="filter-type"
-              value={params.type}
-              onChange={(e) =>
-                setParams({ type: e.target.value as typeof params.type, page: 1 })
-              }
-              className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-            >
-              <option value="all">All</option>
-              {TASK_TYPES.map(({ value }) => (
-                <option key={value} value={value}>
-                  {TYPE_LABELS[value]}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <Label htmlFor="filter-status">Status</Label>
-            <select
-              id="filter-status"
-              value={params.status}
-              onChange={(e) =>
-                setParams({ status: e.target.value as typeof params.status, page: 1 })
-              }
-              className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-            >
-              <option value="all">All</option>
-              {TASK_STATUSES.map(({ value }) => (
-                <option key={value} value={value}>
-                  {value}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <Label htmlFor="filter-campaign">Campaign</Label>
-            <select
-              id="filter-campaign"
-              value={params.campaignId}
-              onChange={(e) =>
-                setParams({ campaignId: e.target.value, page: 1 })
-              }
-              className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-            >
-              <option value="">All</option>
-              {mockCampaigns.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <Label htmlFor="filter-from">Expires from</Label>
-            <Input
-              id="filter-from"
-              type="date"
-              value={params.expiresFrom}
-              onChange={(e) => setParams({ expiresFrom: e.target.value, page: 1 })}
-              className="mt-1"
-            />
-          </div>
-          <div>
-            <Label htmlFor="filter-to">Expires to</Label>
-            <Input
-              id="filter-to"
-              type="date"
-              value={params.expiresTo}
-              onChange={(e) => setParams({ expiresTo: e.target.value, page: 1 })}
-              className="mt-1"
-            />
-          </div>
+      {/* Single filter bar: match submissions — flat, no card, h-9 controls */}
+      <div className="flex flex-wrap items-center gap-2 border-b border-border bg-background py-2">
+        <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+          Sort
+        </span>
+        <SelectDropdown.Root
+          value={sortValue}
+          onValueChange={(v) => {
+            const [id, dir] = v.split("-") as [string, "asc" | "desc"];
+            setParams({ sortId: id, sortDir: dir, page: 1 });
+          }}
+          options={SORT_OPTIONS}
+          placeholder="Sort"
+        >
+          <SelectDropdown.Trigger className="h-9 min-w-[120px] rounded border border-input px-2 text-xs" />
+          <SelectDropdown.Content />
+        </SelectDropdown.Root>
+        <SelectDropdown.Root
+          value={params.type}
+          onValueChange={(v) => setParams({ type: v as typeof params.type, page: 1 })}
+          options={FILTER_TYPE_OPTIONS}
+          placeholder="All types"
+        >
+          <SelectDropdown.Trigger className="h-9 min-w-[100px] rounded border border-input px-2 text-xs" />
+          <SelectDropdown.Content />
+        </SelectDropdown.Root>
+        <SelectDropdown.Root
+          value={params.status}
+          onValueChange={(v) => setParams({ status: v as typeof params.status, page: 1 })}
+          options={FILTER_STATUS_OPTIONS}
+          placeholder="All status"
+        >
+          <SelectDropdown.Trigger className="h-9 min-w-[100px] rounded border border-input px-2 text-xs" />
+          <SelectDropdown.Content />
+        </SelectDropdown.Root>
+        <CampaignSearchSelect
+          value={params.campaignId}
+          onChange={(v) => setParams({ campaignId: v, page: 1 })}
+          campaigns={mockCampaigns}
+          placeholder="All campaigns"
+          className="[&_button]:h-8 [&_button]:min-w-[100px] [&_button]:rounded [&_button]:px-2 [&_button]:text-xs"
+        />
+        <div className="[&_button]:h-9 [&_button]:min-w-[140px] [&_button]:rounded [&_button]:px-2 [&_button]:text-xs">
+          <FilterDateRangePicker
+            dateFrom={params.expiresFrom}
+            dateTo={params.expiresTo}
+            onChange={({ dateFrom, dateTo }) => setParams({ expiresFrom: dateFrom, expiresTo: dateTo, page: 1 })}
+            fromPlaceholder="From"
+            toPlaceholder="To"
+          />
         </div>
+        <div className="relative w-40 transition-[width] duration-200 focus-within:w-56">
+          <Search
+            className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground"
+            aria-hidden
+          />
+          <Input
+            type="search"
+            role="search"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Search..."
+            aria-label="Search tasks"
+            className="h-9 pl-8 text-sm"
+          />
+        </div>
+        {hasActiveFilters && (
+          <button
+            type="button"
+            onClick={clearFilters}
+            className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
+            aria-label="Clear all filters"
+          >
+            <X className="size-3.5 shrink-0" />
+            Clear filters
+          </button>
+        )}
       </div>
 
       {/* Bulk actions */}
@@ -544,15 +624,15 @@ export default function AdminTasksPage() {
       )}
       {!isLoading && !error && (
         <>
-          <div className="overflow-x-auto rounded-lg border border-border bg-card">
+          <div className="overflow-x-auto rounded-xl border border-border bg-card">
             <table className="w-full min-w-[900px] border-collapse">
               <thead>
                 {table.getHeaderGroups().map((headerGroup) => (
-                  <tr key={headerGroup.id} className="border-b border-border bg-muted/40">
+                  <tr key={headerGroup.id} className="border-b border-border bg-muted">
                     {headerGroup.headers.map((header) => (
                       <th
                         key={header.id}
-                        className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wide text-muted-foreground"
+                        className="px-4 py-2 text-left text-[10px] font-semibold uppercase tracking-wider text-muted-foreground"
                         style={{ width: header.getSize() }}
                       >
                         {flexRender(header.column.columnDef.header, header.getContext())}
@@ -570,32 +650,29 @@ export default function AdminTasksPage() {
                   </tr>
                 ) : (
                   table.getRowModel().rows.map((row) => (
-                    <React.Fragment key={row.id}>
-                      <tr
-                        onClick={() => row.toggleExpanded()}
-                        className={cn(
-                          "border-b border-border transition-colors hover:bg-muted/30 cursor-pointer",
-                          row.getIsSelected() && "bg-primary/5"
-                        )}
-                      >
-                        {row.getVisibleCells().map((cell) => (
-                          <td
-                            key={cell.id}
-                            className="px-4 py-3 text-sm"
-                            style={{ width: cell.column.getSize() }}
-                          >
-                            {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                          </td>
-                        ))}
-                      </tr>
-                      {row.getIsExpanded() && (
-                        <tr>
-                          <td colSpan={columns.length} className="p-0">
-                            <TaskRowExpansion task={row.original} />
-                          </td>
-                        </tr>
+                    <tr
+                      key={row.id}
+                      role="button"
+                      tabIndex={0}
+                      onClick={() => router.push(`/admin/tasks/${row.original.id}`)}
+                      onKeyDown={(e) =>
+                        e.key === "Enter" && router.push(`/admin/tasks/${row.original.id}`)
+                      }
+                      className={cn(
+                        "border-b border-border/80 cursor-pointer transition-colors hover:bg-muted/40",
+                        row.getIsSelected() && "bg-primary/5"
                       )}
-                    </React.Fragment>
+                    >
+                      {row.getVisibleCells().map((cell) => (
+                        <td
+                          key={cell.id}
+                          className="whitespace-nowrap px-4 py-2 text-sm"
+                          style={{ width: cell.column.getSize() }}
+                        >
+                          {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                        </td>
+                      ))}
+                    </tr>
                   ))
                 )}
               </tbody>
@@ -613,7 +690,7 @@ export default function AdminTasksPage() {
                 onChange={(e) =>
                   setParams({ pageSize: Number(e.target.value), page: 1 })
                 }
-                className="rounded-md border border-input bg-background px-2 py-1 text-sm"
+                className="h-9 rounded-lg border border-input bg-background px-2 py-1 text-sm"
               >
                 {PAGE_SIZES.map((n) => (
                   <option key={n} value={n}>
@@ -648,15 +725,29 @@ export default function AdminTasksPage() {
       )}
 
       {/* Delete confirm */}
-      <ConfirmDialogRoot open={deleteConfirmOpen} onOpenChange={setDeleteConfirmOpen}>
+      <ConfirmDialogRoot
+        open={deleteConfirmOpen}
+        onOpenChange={(open) => {
+          setDeleteConfirmOpen(open);
+          if (!open) setDeleteTargetIds([]);
+        }}
+      >
         <ConfirmDialogContent
-          title={deleteTargetIds.length > 1 ? "Delete tasks?" : "Delete task?"}
+          title={
+            deleteTargetIds.length > 1
+              ? `Delete ${deleteTargetIds.length} tasks?`
+              : "Delete task?"
+          }
           description={
             deleteTargetIds.length > 1
-              ? `${deleteTargetIds.length} tasks will be permanently deleted.`
-              : "This task will be permanently deleted."
+              ? `This will permanently delete ${deleteTargetIds.length} tasks and all their associated submissions. This action cannot be undone.`
+              : (() => {
+                  const task = tasks.find((t) => t.id === deleteTargetIds[0]);
+                  const title = task?.title ?? "this task";
+                  return `This will permanently delete '${title}' and all its submissions. This action cannot be undone.`;
+                })()
           }
-          confirmLabel="Delete"
+          confirmLabel={deleteTargetIds.length > 1 ? `Delete ${deleteTargetIds.length} tasks` : "Delete task"}
           variant="destructive"
           onConfirm={handleBulkDelete}
           onCancel={() => {
@@ -669,60 +760,75 @@ export default function AdminTasksPage() {
 
       {/* Bulk reward modal */}
       <ConfirmDialogRoot open={bulkRewardOpen} onOpenChange={setBulkRewardOpen}>
-          <ConfirmDialogContent
-            title="Bulk update reward"
-            description={
-              <>
-                <p className="mb-3">Set reward (USD) for {selectedIds.length} task(s).</p>
-                <Label htmlFor="bulk-reward">Amount ($)</Label>
-                <Input
-                  id="bulk-reward"
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  value={bulkRewardValue}
-                  onChange={(e) => setBulkRewardValue(e.target.value)}
-                  className="mt-1"
-                  placeholder="0.00"
-                />
-              </>
-            }
-            confirmLabel="Update"
-            onConfirm={handleBulkReward}
-            onCancel={() => setBulkRewardOpen(false)}
-            loading={bulkUpdateMutation.isPending}
-          />
+        <ConfirmDialogContent
+          title={`Edit ${selectedIds.length} tasks`}
+          description={
+            <>
+              <p className="mb-3">
+                This will update reward for all {selectedIds.length} selected tasks.
+              </p>
+              <Label htmlFor="bulk-reward">Amount ($)</Label>
+              <Input
+                id="bulk-reward"
+                type="number"
+                min="0"
+                step="0.01"
+                value={bulkRewardValue}
+                onChange={(e) => setBulkRewardValue(e.target.value)}
+                className="mt-1"
+                placeholder="0.00"
+              />
+            </>
+          }
+          confirmLabel="Apply changes"
+          variant="default"
+          onConfirm={handleBulkReward}
+          onCancel={() => setBulkRewardOpen(false)}
+          loading={bulkUpdateMutation.isPending}
+        />
       </ConfirmDialogRoot>
 
       {/* Bulk campaign modal */}
       <ConfirmDialogRoot open={bulkCampaignOpen} onOpenChange={setBulkCampaignOpen}>
-          <ConfirmDialogContent
-            title="Bulk update campaign"
-            description={
-              <>
-                <p className="mb-3">Set campaign for {selectedIds.length} task(s).</p>
-                <Label htmlFor="bulk-campaign">Campaign</Label>
-                <select
-                  id="bulk-campaign"
-                  value={bulkCampaignId}
-                  onChange={(e) => setBulkCampaignId(e.target.value)}
-                  className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-                >
-                  <option value="">None</option>
-                  {mockCampaigns.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.name}
-                    </option>
-                  ))}
-                </select>
-              </>
-            }
-            confirmLabel="Update"
-            onCancel={() => setBulkCampaignOpen(false)}
-            loading={bulkUpdateMutation.isPending}
-            onConfirm={handleBulkCampaign}
-          />
+        <ConfirmDialogContent
+          title={`Edit ${selectedIds.length} tasks`}
+          description={
+            <>
+              <p className="mb-3">
+                This will update campaign for all {selectedIds.length} selected tasks.
+              </p>
+              <Label htmlFor="bulk-campaign">Campaign</Label>
+              <select
+                id="bulk-campaign"
+                value={bulkCampaignId}
+                onChange={(e) => setBulkCampaignId(e.target.value)}
+                className="mt-1 h-9 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm"
+              >
+                <option value="">None</option>
+                {mockCampaigns.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                  </option>
+                ))}
+              </select>
+            </>
+          }
+          confirmLabel="Apply changes"
+          variant="default"
+          onCancel={() => setBulkCampaignOpen(false)}
+          onConfirm={handleBulkCampaign}
+          loading={bulkUpdateMutation.isPending}
+        />
       </ConfirmDialogRoot>
+
+      {toast && (
+        <div
+          role="status"
+          className="fixed bottom-4 left-1/2 z-50 -translate-x-1/2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-lg"
+        >
+          {toast}
+        </div>
+      )}
     </div>
   );
 }
@@ -744,7 +850,7 @@ function SortHeader({
     <button
       type="button"
       onClick={() => setSort(column.id, !isDesc)}
-      className="flex items-center gap-1 font-medium hover:text-foreground"
+      className="flex items-center gap-1 hover:text-foreground"
     >
       {label}
       {current && (

@@ -2,18 +2,21 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import type { Task, ProofType } from "@/lib/types";
+import { getCampaigns } from "@/lib/mock/mockCampaigns";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Select } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
+import { SelectDropdown } from "@/components/ui/select-dropdown";
 import { MarkdownEditor } from "./MarkdownEditor";
-import { CampaignSelect } from "./CampaignSelect";
+import { ExpiryDatePicker } from "./ExpiryDatePicker";
 import { taskComposerSchema, defaultValues, type TaskComposerFormValues } from "./taskComposerSchema";
 import { useCreateTask, useUpdateTask } from "@/hooks/useTasks";
+import { ConfirmDialogRoot, ConfirmDialogContent } from "@/components/ui/confirm-dialog";
 import { cn } from "@/lib/utils";
 
 const TASK_TYPES: { value: TaskComposerFormValues["type"]; label: string }[] = [
@@ -36,6 +39,11 @@ const PROOF_OPTIONS: { value: ProofType; label: string }[] = [
   { value: "url", label: "URL" },
   { value: "text", label: "Text" },
   { value: "form", label: "Form" },
+];
+
+const CAMPAIGN_OPTIONS = [
+  { value: "", label: "None" },
+  ...getCampaigns().map((c) => ({ value: c.id, label: c.name })),
 ];
 
 function taskToFormValues(task: Task): TaskComposerFormValues {
@@ -70,9 +78,11 @@ function formValuesToPayload(values: TaskComposerFormValues): Omit<Task, "id" | 
 }
 
 export function TaskComposer({ task }: { task?: Task | null }) {
+  const router = useRouter();
   const isEdit = !!task;
   const [successTask, setSuccessTask] = useState<Task | null>(null);
   const [submitProgress, setSubmitProgress] = useState(0);
+  const [discardDialogOpen, setDiscardDialogOpen] = useState(false);
 
   const createMutation = useCreateTask();
   const updateMutation = useUpdateTask();
@@ -85,9 +95,6 @@ export function TaskComposer({ task }: { task?: Task | null }) {
   useEffect(() => {
     if (task) form.reset(taskToFormValues(task));
   }, [task, form]);
-
-  const rewardCents = form.watch("reward");
-  const rewardDollars = (rewardCents / 100).toFixed(2);
 
   const isPending = createMutation.isPending || updateMutation.isPending;
 
@@ -156,15 +163,19 @@ export function TaskComposer({ task }: { task?: Task | null }) {
     );
   }
 
+  const rewardCents = form.watch("reward");
+
   return (
-    <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-8">
+    <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
       {form.formState.errors.root && (
         <p className="text-sm text-destructive">{form.formState.errors.root.message}</p>
       )}
 
-      <section className="space-y-4">
-        <h2 className="font-display text-sm font-semibold text-foreground">Basics</h2>
-        <div className="grid gap-4 sm:grid-cols-1">
+      <div className="rounded-lg border border-border bg-card shadow-sm">
+        <h2 className="border-b border-border px-4 py-3 font-display text-sm font-semibold uppercase tracking-wider text-foreground">
+          Basics
+        </h2>
+        <div className="space-y-4 p-4">
           <div className="space-y-2">
             <Label htmlFor="title">Title</Label>
             <Input
@@ -184,53 +195,71 @@ export function TaskComposer({ task }: { task?: Task | null }) {
             />
           </div>
         </div>
-      </section>
+      </div>
 
-      <section className="space-y-4">
-        <h2 className="font-display text-sm font-semibold text-foreground">Type & status</h2>
-        <div className="grid gap-4 sm:grid-cols-2">
+      <div className="rounded-lg border border-border bg-card shadow-sm">
+        <h2 className="border-b border-border px-4 py-3 font-display text-sm font-semibold uppercase tracking-wider text-foreground">
+          Type & Status
+        </h2>
+        <div className="grid gap-4 p-4 sm:grid-cols-2">
           <div className="space-y-2">
             <Label htmlFor="type">Type</Label>
-            <Select
-              id="type"
-              {...form.register("type")}
-              className={form.formState.errors.type ? "border-destructive" : ""}
+            <SelectDropdown.Root
+              value={form.watch("type")}
+              onValueChange={(v) => form.setValue("type", v as TaskComposerFormValues["type"], { shouldValidate: true })}
+              options={TASK_TYPES}
+              placeholder="Type"
             >
-              {TASK_TYPES.map((o) => (
-                <option key={o.value} value={o.value}>
-                  {o.label}
-                </option>
-              ))}
-            </Select>
+              <SelectDropdown.Trigger
+                className={form.formState.errors.type ? "border-destructive" : ""}
+              />
+              <SelectDropdown.Content />
+            </SelectDropdown.Root>
+            {form.formState.errors.type && (
+              <p className="text-xs text-destructive">{form.formState.errors.type.message}</p>
+            )}
           </div>
           <div className="space-y-2">
             <Label htmlFor="status">Status</Label>
-            <Select id="status" {...form.register("status")}>
-              {TASK_STATUSES.map((o) => (
-                <option key={o.value} value={o.value}>
-                  {o.label}
-                </option>
-              ))}
-            </Select>
+            <SelectDropdown.Root
+              value={form.watch("status")}
+              onValueChange={(v) => form.setValue("status", v as TaskComposerFormValues["status"], { shouldValidate: true })}
+              options={TASK_STATUSES}
+              placeholder="Status"
+            >
+              <SelectDropdown.Trigger />
+              <SelectDropdown.Content />
+            </SelectDropdown.Root>
           </div>
         </div>
-      </section>
+      </div>
 
-      <section className="space-y-4">
-        <h2 className="font-display text-sm font-semibold text-foreground">Reward & capacity</h2>
-        <div className="grid gap-4 sm:grid-cols-2">
+      <div className="rounded-lg border border-border bg-card shadow-sm">
+        <h2 className="border-b border-border px-4 py-3 font-display text-sm font-semibold uppercase tracking-wider text-foreground">
+          Reward & Capacity
+        </h2>
+        <div className="grid gap-4 p-4 sm:grid-cols-2">
           <div className="space-y-2">
-            <Label htmlFor="reward">Reward (cents)</Label>
-            <Input
-              id="reward"
-              type="number"
-              min={0}
-              {...form.register("reward", { setValueAs: (v) => (v === "" ? 0 : Number(v)) })}
-              className={form.formState.errors.reward ? "border-destructive" : ""}
-            />
-            <p className="text-xs text-muted-foreground">
-              ≈ <strong className="text-foreground">${rewardDollars}</strong> USD
-            </p>
+            <Label htmlFor="reward">Reward</Label>
+            <div className="flex h-9 w-full items-center rounded-lg border border-input bg-background shadow-sm focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-2">
+              <span className="pl-3 text-sm text-muted-foreground">$</span>
+              <input
+                id="reward"
+                type="number"
+                min={0}
+                step={0.01}
+                value={rewardCents / 100}
+                onChange={(e) => {
+                  const val = parseFloat(e.target.value);
+                  const cents = Number.isNaN(val) ? 0 : Math.round(val * 100);
+                  form.setValue("reward", cents, { shouldValidate: true });
+                }}
+                className={cn(
+                  "h-full min-w-0 flex-1 border-0 bg-transparent px-2 py-2 text-sm outline-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none",
+                  form.formState.errors.reward && "text-destructive"
+                )}
+              />
+            </div>
             {form.formState.errors.reward && (
               <p className="text-xs text-destructive">{form.formState.errors.reward.message}</p>
             )}
@@ -249,57 +278,79 @@ export function TaskComposer({ task }: { task?: Task | null }) {
             )}
           </div>
         </div>
-      </section>
+      </div>
 
-      <section className="space-y-4">
-        <h2 className="font-display text-sm font-semibold text-foreground">Campaign & proofs</h2>
-        <div className="grid gap-4 sm:grid-cols-1">
-          <div className="space-y-2">
-            <Label htmlFor="campaignId">Campaign</Label>
-            <CampaignSelect
-              id="campaignId"
-              value={form.watch("campaignId") ?? ""}
-              onChange={(v) => form.setValue("campaignId", v || null, { shouldValidate: true })}
-              aria-invalid={!!form.formState.errors.campaignId}
+      <div className="grid gap-6 lg:grid-cols-2">
+        <div className="rounded-lg border border-border bg-card shadow-sm">
+          <h2 className="border-b border-border px-4 py-3 font-display text-sm font-semibold uppercase tracking-wider text-foreground">
+            Campaign & Proofs
+          </h2>
+          <div className="space-y-4 p-4">
+            <div className="space-y-2">
+              <Label htmlFor="campaignId">Campaign</Label>
+              <SelectDropdown.Root
+                value={form.watch("campaignId") ?? ""}
+                onValueChange={(v) => form.setValue("campaignId", v || null, { shouldValidate: true })}
+                options={CAMPAIGN_OPTIONS}
+                placeholder="None"
+                className="mt-0"
+              >
+                <SelectDropdown.Trigger showSearchIcon />
+                <SelectDropdown.Content />
+              </SelectDropdown.Root>
+            </div>
+            <div className="space-y-2">
+              <Label>Required proofs</Label>
+              <div className="flex flex-wrap gap-2">
+                {PROOF_OPTIONS.map((o) => {
+                  const checked = form.watch("requiredProofs").includes(o.value);
+                  return (
+                    <label
+                      key={o.value}
+                      className={cn(
+                        "inline-flex cursor-pointer items-center gap-2 rounded-full border px-3 py-1.5 text-sm font-medium transition-colors",
+                        checked
+                          ? "border-primary bg-primary text-primary-foreground"
+                          : "border-input bg-background text-foreground hover:bg-muted/50"
+                      )}
+                    >
+                      <Checkbox
+                        checked={checked}
+                        onChange={(e) => {
+                          const next = e.target.checked
+                            ? [...form.getValues("requiredProofs"), o.value]
+                            : form.getValues("requiredProofs").filter((p) => p !== o.value);
+                          form.setValue("requiredProofs", next, { shouldValidate: true });
+                        }}
+                        className="size-4 border-2"
+                      />
+                      <span>{o.label}</span>
+                    </label>
+                  );
+                })}
+              </div>
+              {form.formState.errors.requiredProofs && (
+                <p className="text-xs text-destructive">{form.formState.errors.requiredProofs.message}</p>
+              )}
+            </div>
+          </div>
+        </div>
+
+        <div className="rounded-lg border border-border bg-card shadow-sm">
+          <h2 className="border-b border-border px-4 py-3 font-display text-sm font-semibold uppercase tracking-wider text-foreground">
+            Expiry
+          </h2>
+          <div className="space-y-2 p-4">
+            <Label htmlFor="expiresAt">Expires at (optional)</Label>
+            <ExpiryDatePicker
+              id="expiresAt"
+              value={form.watch("expiresAt")}
+              onChange={(v) => form.setValue("expiresAt", v)}
+              aria-invalid={!!form.formState.errors.expiresAt}
             />
           </div>
-          <div className="space-y-2">
-            <Label>Required proofs</Label>
-            <div className="flex flex-wrap gap-4">
-              {PROOF_OPTIONS.map((o) => (
-                <label key={o.value} className="flex cursor-pointer items-center gap-2">
-                  <Checkbox
-                    checked={form.watch("requiredProofs").includes(o.value)}
-                    onChange={(e) => {
-                      const next = e.target.checked
-                        ? [...form.getValues("requiredProofs"), o.value]
-                        : form.getValues("requiredProofs").filter((p) => p !== o.value);
-                      form.setValue("requiredProofs", next, { shouldValidate: true });
-                    }}
-                  />
-                  <span className="text-sm">{o.label}</span>
-                </label>
-              ))}
-            </div>
-            {form.formState.errors.requiredProofs && (
-              <p className="text-xs text-destructive">{form.formState.errors.requiredProofs.message}</p>
-            )}
-          </div>
         </div>
-      </section>
-
-      <section className="space-y-4">
-        <h2 className="font-display text-sm font-semibold text-foreground">Expiry</h2>
-        <div className="space-y-2">
-          <Label htmlFor="expiresAt">Expires at (optional)</Label>
-          <Input
-            id="expiresAt"
-            type="datetime-local"
-            value={form.watch("expiresAt") ?? ""}
-            onChange={(e) => form.setValue("expiresAt", e.target.value || null)}
-          />
-        </div>
-      </section>
+      </div>
 
       {isPending && (
         <div className="space-y-2">
@@ -313,14 +364,42 @@ export function TaskComposer({ task }: { task?: Task | null }) {
         </div>
       )}
 
-      <div className="flex gap-2">
-        <Button type="submit" disabled={isPending}>
-          {isEdit ? "Update task" : "Create task"}
-        </Button>
-        <Link href="/admin/tasks" className={buttonVariants({ variant: "outline" })}>
-          Cancel
-        </Link>
+      <div className="border-t border-border pt-4">
+        <div className="flex gap-2">
+          <Button type="submit" disabled={isPending}>
+            {isEdit ? "Update task" : "Create task"}
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => {
+              if (form.formState.isDirty) {
+                setDiscardDialogOpen(true);
+              } else {
+                router.push("/admin/tasks");
+              }
+            }}
+          >
+            Cancel
+          </Button>
+        </div>
       </div>
+
+      <ConfirmDialogRoot open={discardDialogOpen} onOpenChange={setDiscardDialogOpen}>
+        <ConfirmDialogContent
+          title="Discard changes?"
+          description="You have unsaved changes. If you leave, your changes will be lost."
+          cancelLabel="Keep editing"
+          cancelVariant="default"
+          confirmLabel="Discard"
+          variant="destructive"
+          onConfirm={() => {
+            setDiscardDialogOpen(false);
+            router.push("/admin/tasks");
+          }}
+          onCancel={() => setDiscardDialogOpen(false)}
+        />
+      </ConfirmDialogRoot>
     </form>
   );
 }

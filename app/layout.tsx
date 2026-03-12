@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import { Figtree, Syne } from "next/font/google";
 import { NuqsAdapter } from "nuqs/adapters/next/app";
+import { ThemeProvider } from "@/components/providers/ThemeProvider";
+import { SettingsApply } from "@/components/providers/SettingsApply";
 import { Providers } from "./providers";
 import "./globals.css";
 
@@ -27,11 +29,14 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className={`${figtree.variable} ${syne.variable}`}>
+    <html lang="en" className={`${figtree.variable} ${syne.variable}`} suppressHydrationWarning>
       <body className="antialiased">
-        <NuqsAdapter>
-          <Providers>{children}</Providers>
-        </NuqsAdapter>
+        <ThemeProvider>
+          <SettingsApply />
+          <NuqsAdapter>
+            <Providers>{children}</Providers>
+          </NuqsAdapter>
+        </ThemeProvider>
       </body>
     </html>
   );

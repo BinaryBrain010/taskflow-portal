@@ -10,6 +10,12 @@ const STATUS_LABELS: Record<string, string> = {
   rejected: "Rejected",
 };
 
+const STATUS_BADGE_STYLES: Record<string, string> = {
+  approved: "bg-green-500/15 text-green-700 dark:bg-green-900/50 dark:text-green-200",
+  rejected: "bg-destructive/15 text-destructive",
+  pending: "bg-amber-500/15 text-amber-700 dark:bg-amber-900/50 dark:text-amber-200",
+};
+
 interface TaskRowExpansionProps {
   task: Task;
 }
@@ -27,59 +33,53 @@ export function TaskRowExpansion({ task }: TaskRowExpansionProps) {
   );
 
   return (
-    <div className="border-t border-border bg-muted/20 px-4 py-4">
+    <div className="border-l-4 border-l-primary border-t border-border bg-muted/50 p-3">
       <div className="flex flex-wrap gap-6">
-        <div>
-          <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-            Slots remaining
-          </span>
-          <p className="font-display text-lg font-semibold text-foreground">{slotsLeft}</p>
+        <div className="min-w-0 flex-1">
+          <p className="text-xs text-muted-foreground">Slots remaining</p>
+          <p className="mt-0.5 text-sm font-medium text-foreground">{slotsLeft}</p>
         </div>
-        <div>
-          <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-            Submission count
-          </span>
-          <p className="font-display text-lg font-semibold text-foreground">{submissions.length}</p>
+        <div className="min-w-0 flex-1">
+          <p className="text-xs text-muted-foreground">Submission count</p>
+          <p className="mt-0.5 text-sm font-medium text-foreground">{submissions.length}</p>
         </div>
-        <div>
-          <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-            Approval breakdown
-          </span>
-          <ul className="mt-1 flex flex-wrap gap-2">
-            {Object.entries(breakdown).map(([status, count]) => (
-              <li
-                key={status}
-                className={cn(
-                  "rounded-md px-2 py-0.5 text-sm",
-                  status === "approved" && "bg-green-500/15 text-green-700 dark:text-green-400",
-                  status === "rejected" && "bg-destructive/15 text-destructive",
-                  status === "pending" &&
-                    "bg-amber-500/15 text-amber-700 dark:text-amber-400"
-                )}
-              >
-                {STATUS_LABELS[status] ?? status}: {count}
-              </li>
-            ))}
-          </ul>
+        <div className="min-w-0 flex-1">
+          <p className="text-xs text-muted-foreground">Approval breakdown</p>
+          <div className="mt-1.5 flex flex-wrap gap-1.5">
+            {(["pending", "approved", "rejected"] as const).map((status) => {
+              const count = breakdown[status] ?? 0;
+              return (
+                <span
+                  key={status}
+                  className={cn(
+                    "inline-flex shrink-0 items-center rounded-full border border-current/20 px-2 py-0.5 text-[11px] font-medium whitespace-nowrap",
+                    STATUS_BADGE_STYLES[status]
+                  )}
+                >
+                  {STATUS_LABELS[status]}: {count}
+                </span>
+              );
+            })}
+          </div>
         </div>
       </div>
 
       {isLoading && (
-        <p className="mt-3 text-sm text-muted-foreground">Loading submissions…</p>
+        <p className="mt-2 text-sm text-muted-foreground">Loading submissions…</p>
       )}
       {error && (
-        <p className="mt-3 text-sm text-destructive">{error.message ?? "Failed to load submissions."}</p>
+        <p className="mt-2 text-sm text-destructive">{error.message ?? "Failed to load submissions."}</p>
       )}
       {!isLoading && !error && submissions.length > 0 && (
-        <div className="mt-4">
-          <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+        <div className="mt-3">
+          <span className="text-xs text-muted-foreground">
             Submissions for this task
           </span>
-          <ul className="mt-2 space-y-2">
+          <ul className="mt-1.5 space-y-1">
             {submissions.slice(0, 10).map((s) => (
               <li
                 key={s.id}
-                className="rounded-md border border-border bg-background px-3 py-2 text-sm"
+                className="rounded-md border border-border bg-background px-2 py-1.5 text-sm"
               >
                 <span className="font-medium">{s.id}</span>
                 <span className="mx-2 text-muted-foreground">·</span>
@@ -104,14 +104,14 @@ export function TaskRowExpansion({ task }: TaskRowExpansionProps) {
             ))}
           </ul>
           {submissions.length > 10 && (
-            <p className="mt-2 text-sm text-muted-foreground">
+            <p className="mt-1.5 text-xs text-muted-foreground">
               +{submissions.length - 10} more
             </p>
           )}
         </div>
       )}
       {!isLoading && !error && submissions.length === 0 && (
-        <p className="mt-3 text-sm text-muted-foreground">No submissions yet.</p>
+        <p className="mt-2 text-sm text-muted-foreground">No submissions yet.</p>
       )}
     </div>
   );

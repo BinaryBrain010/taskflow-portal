@@ -61,7 +61,7 @@ describe("TaskComposer", () => {
       const titleInput = screen.getByLabelText(/title/i) as HTMLInputElement;
       expect(titleInput.value).toBe("Pre-filled task");
       const rewardInput = screen.getByLabelText(/reward/i) as HTMLInputElement;
-      expect(rewardInput.value).toBe("500");
+      expect(rewardInput.value).toBe("5"); // 500 cents = $5.00 displayed as dollars
       const slotsInput = screen.getByLabelText(/total slots/i) as HTMLInputElement;
       expect(slotsInput.value).toBe("20");
     });

@@ -3,14 +3,22 @@
 import React, { useMemo, useRef, useState, useEffect, useCallback } from "react";
 import { useQueryStates, parseAsStringLiteral, parseAsString } from "nuqs";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { ChevronDown, ChevronRight, X } from "lucide-react";
+import { ChevronDown, ChevronUp, ChevronRight, X, Check, Loader2, Search } from "lucide-react";
+import Link from "next/link";
 import type { Submission, SubmissionStatus } from "@/lib/types";
 import { useSubmissionsQuery, useReviewSubmission } from "@/hooks/useSubmissions";
 import { useTasksQuery } from "@/hooks/useTasks";
+import { useUsersQuery } from "@/hooks/useUsers";
 import { useIsMobile } from "@/hooks/useIsMobile";
-import { SubmissionRow } from "@/components/admin-submissions/SubmissionRow";
+import { STATUS_STYLES, formatTime, TaskTypeBadge } from "@/components/admin-submissions/SubmissionRow";
 import { SubmissionDetailSidebar } from "@/components/admin-submissions/SubmissionDetailSidebar";
+import { SubmissionsEmptyState } from "@/components/admin-submissions/SubmissionsEmptyState";
 import { TaskSearchSelect } from "@/components/admin-submissions/TaskSearchSelect";
+import { WorkerSearchSelect } from "@/components/admin-submissions/WorkerSearchSelect";
+import { FilterDateRangePicker } from "@/components/admin-submissions/FilterDateRangePicker";
+import { SubmissionsSkeleton } from "@/components/admin-submissions/SubmissionsSkeleton";
+import { Input } from "@/components/ui/input";
+import { SelectDropdown } from "@/components/ui/select-dropdown";
 import {
   SheetRoot,
   SheetContent,
@@ -19,9 +27,12 @@ import {
   SheetBody,
 } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
-import { Label } from "@/components/ui/label";
-import { Input } from "@/components/ui/input";
-import { mockUsers } from "@/lib/mock/mockUsers";
+import { Tooltip } from "@/components/ui/tooltip";
+import {
+  ConfirmDialogRoot,
+  ConfirmDialogContent,
+  RejectDialogContent,
+} from "@/components/ui/confirm-dialog";
 import { useQueryClient } from "@tanstack/react-query";
 import { submissionKeys } from "@/hooks/useSubmissions";
 import type { SubmissionFilters } from "@/lib/types";
@@ -46,7 +57,7 @@ const SORT_OPTIONS = [
 
 const parsers = {
   status: parseAsStringLiteral(["all", "pending", "approved", "rejected"] as const).withDefault("all"),
-  view: parseAsStringLiteral(["grouped", "flat"] as const).withDefault("grouped"),
+  view: parseAsStringLiteral(["grouped", "flat"] as const).withDefault("flat"),
   taskId: parseAsString.withDefault(""),
   workerId: parseAsString.withDefault(""),
   dateFrom: parseAsString.withDefault(""),
@@ -54,15 +65,56 @@ const parsers = {
   sort: parseAsStringLiteral(["newest", "oldest"] as const).withDefault("newest"),
 };
 
-const ROW_HEIGHT = 80;
+const ROW_HEIGHT = 40;
 const OVERSCAN = 5;
-const workerUsers = mockUsers.filter((u) => u.role === "worker");
+
+const TAB_BADGE_STYLES: Record<string, string> = {
+  pending: "bg-amber-500/15 text-amber-700 dark:bg-amber-900/50 dark:text-amber-200",
+  approved: "bg-green-500/15 text-green-700 dark:bg-green-900/50 dark:text-green-200",
+  rejected: "bg-destructive/15 text-destructive",
+};
+
+const TYPE_BORDER_COLORS: Record<string, string> = {
+  survey: "border-l-indigo-500",
+  content_review: "border-l-violet-500",
+  data_labeling: "border-l-orange-500",
+  transcription: "border-l-cyan-500",
+};
+
+function WorkerAvatar({ name, className }: { name: string; className?: string }) {
+  const initial = name.slice(0, 1).toUpperCase();
+  return (
+    <div
+      className={cn(
+        "flex shrink-0 items-center justify-center rounded-full bg-primary/20 text-xs font-medium text-primary",
+        className
+      )}
+    >
+      {initial}
+    </div>
+  );
+}
+
+function matchesSearch(s: Submission, q: string): boolean {
+  if (!q.trim()) return true;
+  const lower = q.trim().toLowerCase();
+  const worker = (s.worker?.name ?? s.workerId ?? "").toLowerCase();
+  const taskTitle = (s.task?.title ?? s.taskId ?? "").toLowerCase();
+  return worker.includes(lower) || taskTitle.includes(lower) || s.id.toLowerCase().includes(lower);
+}
 
 export default function AdminSubmissionsPage() {
   const [params, setParams] = useQueryStates(parsers);
   const [selected, setSelected] = useState<Submission | null>(null);
   const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
+  // Track expanded task ids (empty = all collapsed by default)
   const [expandedTasks, setExpandedTasks] = useState<Set<string>>(new Set());
+  const [searchQuery, setSearchQuery] = useState("");
+  const [approveDialogOpen, setApproveDialogOpen] = useState(false);
+  const [approveTarget, setApproveTarget] = useState<Submission | null>(null);
+  const [rejectDialogOpen, setRejectDialogOpen] = useState(false);
+  const [rejectTarget, setRejectTarget] = useState<Submission | null>(null);
+  const [rejectNote, setRejectNote] = useState("");
   const isMobile = useIsMobile();
   const scrollRef = useRef<HTMLDivElement>(null);
   const queryClient = useQueryClient();
@@ -79,8 +131,28 @@ export default function AdminSubmissionsPage() {
     [params.status, params.taskId, params.workerId, params.dateFrom, params.dateTo, params.view]
   );
 
-  const { data: submissions = [], isLoading, error } = useSubmissionsQuery(filters);
+  /** Same filters but no status filter — used only for tab counts so all statuses show correct numbers */
+  const filtersForCounts = useMemo<SubmissionFilters>(
+    () => ({
+      ...filters,
+      status: undefined,
+    }),
+    [filters]
+  );
+
+  const { data: submissions = [], isLoading, isFetching, error } = useSubmissionsQuery(filters);
+  const { data: submissionsForCounts = [] } = useSubmissionsQuery(filtersForCounts);
   const { data: tasks = [] } = useTasksQuery();
+  const { data: workers = [], isFetching: workersFetching } = useUsersQuery({ role: "worker" });
+
+  const statusCounts = useMemo(
+    () => ({
+      pending: submissionsForCounts.filter((s) => s.status === "pending").length,
+      approved: submissionsForCounts.filter((s) => s.status === "approved").length,
+      rejected: submissionsForCounts.filter((s) => s.status === "rejected").length,
+    }),
+    [submissionsForCounts]
+  );
 
   const sorted = useMemo(() => {
     const copy = [...submissions];
@@ -91,9 +163,14 @@ export default function AdminSubmissionsPage() {
     return copy;
   }, [submissions, params.sort]);
 
+  const filteredSorted = useMemo(
+    () => (searchQuery.trim() ? sorted.filter((s) => matchesSearch(s, searchQuery)) : sorted),
+    [sorted, searchQuery]
+  );
+
   const grouped = useMemo(() => {
     const map = new Map<string, Submission[]>();
-    for (const s of sorted) {
+    for (const s of filteredSorted) {
       const list = map.get(s.taskId) ?? [];
       list.push(s);
       map.set(s.taskId, list);
@@ -101,17 +178,43 @@ export default function AdminSubmissionsPage() {
     return Array.from(map.entries()).map(([taskId, list]) => ({
       taskId,
       taskTitle: list[0]?.task?.title ?? taskId,
+      taskType: list[0]?.task?.type,
       submissions: list,
     }));
-  }, [sorted]);
+  }, [filteredSorted]);
 
-  const flatItems = sorted;
+  // Stable key so effect only runs when the set of task ids actually changes (avoids infinite loop from array reference churn)
+  const groupedTaskIdsKey = useMemo(
+    () => grouped.map((g) => g.taskId).sort().join(","),
+    [grouped]
+  );
+  useEffect(() => {
+    setExpandedTasks(new Set());
+  }, [groupedTaskIdsKey]);
+
+  const flatItems = filteredSorted;
+
+  const hasActiveFilters =
+    params.taskId !== "" ||
+    params.workerId !== "" ||
+    params.dateFrom !== "" ||
+    params.dateTo !== "" ||
+    searchQuery.trim() !== "";
+
+  const clearFilters = () => {
+    setParams({ taskId: "", workerId: "", dateFrom: "", dateTo: "" });
+    setSearchQuery("");
+  };
+
+  const expandAll = () => setExpandedTasks(new Set(grouped.map((g) => g.taskId)));
+  const collapseAll = () => setExpandedTasks(new Set());
 
   const handleReviewed = useCallback(
     (submission: Submission) => {
       setSelected((prev) => (prev?.id === submission.id ? submission : prev));
       setToast({
-        message: `Submission ${submission.status === "approved" ? "approved" : "rejected"}.`,
+        message:
+          submission.status === "approved" ? "Submission approved" : "Submission rejected",
         type: "success",
       });
     },
@@ -158,49 +261,192 @@ export default function AdminSubmissionsPage() {
     });
   };
 
+  const handleQuickApprove = (s: Submission) => {
+    setApproveTarget(s);
+    setApproveDialogOpen(true);
+  };
+  const handleQuickReject = (s: Submission) => {
+    setRejectTarget(s);
+    setRejectNote("");
+    setRejectDialogOpen(true);
+  };
+
+  const handleApproveConfirm = useCallback(() => {
+    if (!approveTarget) return;
+    reviewMutation.mutate(
+      { id: approveTarget.id, action: "approve" },
+      {
+        onSuccess: () => {
+          setApproveDialogOpen(false);
+          setApproveTarget(null);
+        },
+      }
+    );
+  }, [approveTarget, reviewMutation]);
+
+  const handleRejectConfirm = useCallback(
+    (note: string) => {
+      if (!rejectTarget) return;
+      reviewMutation.mutate(
+        { id: rejectTarget.id, action: "reject", note: note.trim() || undefined },
+        {
+          onSuccess: () => {
+            setRejectDialogOpen(false);
+            setRejectTarget(null);
+            setRejectNote("");
+          },
+        }
+      );
+    },
+    [rejectTarget, reviewMutation]
+  );
+
   const detailOpen = !!selected;
 
+
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-6">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <h1 className="font-display text-2xl font-semibold tracking-tight text-foreground">
+    <div className="flex min-h-0 flex-1 flex-col gap-3 px-2">
+      {/* Header: title + divider + status tabs (same row) */}
+      <div className="flex flex-wrap items-center gap-3 border-b border-border pb-2">
+        <h1 className="font-display text-xl font-semibold tracking-tight text-foreground">
           Submissions
         </h1>
+        <div className="h-4 w-px shrink-0 bg-border" aria-hidden />
+        <div className="flex flex-wrap items-center gap-1.5" role="tablist" aria-label="Status">
+          {STATUS_TABS.map(({ value, label }) => {
+            const count =
+              value === "all" ? undefined : statusCounts[value as keyof typeof statusCounts];
+            const isSelected = params.status === value;
+            return (
+              <button
+                key={value}
+                type="button"
+                role="tab"
+                aria-selected={isSelected}
+                onClick={() => setParams({ status: value })}
+                className={cn(
+                  "inline-flex h-7 shrink-0 items-center gap-1.5 rounded-full border px-2.5 py-1 text-sm transition-colors",
+                  isSelected
+                    ? "border-primary bg-primary text-primary-foreground"
+                    : "border-border bg-card text-muted-foreground hover:bg-muted/50 hover:text-foreground"
+                )}
+              >
+                <span>{label}</span>
+                {count !== undefined && (
+                  <span
+                    className={cn(
+                      "flex size-4 items-center justify-center rounded-full text-[10px] font-semibold",
+                      isSelected ? "bg-primary-foreground/25" : TAB_BADGE_STYLES[value] ?? "bg-muted"
+                    )}
+                  >
+                    {count}
+                  </span>
+                )}
+              </button>
+            );
+          })}
+        </div>
       </div>
 
-      {/* Status tabs */}
-      <div className="flex gap-1 overflow-x-auto pb-1" role="tablist" aria-label="Status">
-        {STATUS_TABS.map(({ value, label }) => (
-          <button
-            key={value}
-            type="button"
-            role="tab"
-            aria-selected={params.status === value}
-            onClick={() => setParams({ status: value })}
-            className={cn(
-              "min-h-[44px] shrink-0 touch-manipulation rounded-lg px-3 py-2 text-sm font-medium transition-colors",
-              params.status === value
-                ? "bg-primary text-primary-foreground shadow-sm"
-                : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
-            )}
-          >
-            {label}
-          </button>
-        ))}
-      </div>
-
-      {/* View toggle + sort + filters */}
-      <div className="flex flex-wrap items-end gap-4 rounded-lg border border-border bg-card p-4">
+      {/* Single filter bar: Expand/Collapse | View | Sort | Task | Worker | From | To | Search | Clear */}
+      <div className="flex flex-wrap items-center gap-2 border-b border-border bg-background py-2">
+        {params.view === "grouped" && grouped.length > 0 && (
+          <>
+            <button
+              type="button"
+              onClick={expandAll}
+              className="text-xs text-muted-foreground hover:text-foreground"
+            >
+              Expand all
+            </button>
+            <span className="text-xs text-muted-foreground">·</span>
+            <button
+              type="button"
+              onClick={collapseAll}
+              className="text-xs text-muted-foreground hover:text-foreground"
+            >
+              Collapse all
+            </button>
+            <span className="mr-1 w-px self-stretch bg-border" aria-hidden />
+          </>
+        )}
+        <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+          Sort
+        </span>
+        <SelectDropdown.Root
+          value={params.sort}
+          onValueChange={(v) => setParams({ sort: v as "newest" | "oldest" })}
+          options={SORT_OPTIONS}
+          placeholder="Sort"
+        >
+          <SelectDropdown.Trigger className="h-8 min-w-[100px] rounded border border-input px-2 text-xs" />
+          <SelectDropdown.Content />
+        </SelectDropdown.Root>
+        <TaskSearchSelect
+          value={params.taskId}
+          onChange={(v) => setParams({ taskId: v })}
+          tasks={tasks}
+          placeholder="All tasks"
+          isFetching={false}
+          className="[&_button]:h-8 [&_button]:min-w-[100px] [&_button]:rounded [&_button]:px-2 [&_button]:text-xs"
+        />
+        <WorkerSearchSelect
+          value={params.workerId}
+          onChange={(v) => setParams({ workerId: v })}
+          workers={workers}
+          placeholder="All workers"
+          isFetching={workersFetching}
+          className="[&_button]:h-8 [&_button]:min-w-[100px] [&_button]:rounded [&_button]:px-2 [&_button]:text-xs"
+        />
+        <div className="[&_button]:h-8 [&_button]:min-w-[140px] [&_button]:rounded [&_button]:px-2 [&_button]:text-xs">
+          <FilterDateRangePicker
+            dateFrom={params.dateFrom}
+            dateTo={params.dateTo}
+            onChange={({ dateFrom, dateTo }) => setParams({ dateFrom, dateTo })}
+            fromPlaceholder="From"
+            toPlaceholder="To"
+          />
+        </div>
         <div className="flex items-center gap-2">
-          <span className="text-sm text-muted-foreground">View:</span>
-          <div className="flex rounded-lg border border-border bg-muted/30 p-0.5">
+          <div className="relative w-40 transition-[width] duration-200 focus-within:w-56">
+            <Search
+              className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground"
+              aria-hidden
+            />
+            <Input
+              type="search"
+              role="search"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search..."
+              aria-label="Search submissions by worker or task"
+              className="h-9 pl-8 text-sm"
+            />
+          </div>
+          {hasActiveFilters && (
+            <button
+              type="button"
+              onClick={clearFilters}
+              className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
+              aria-label="Clear all filters"
+            >
+              <X className="size-3.5 shrink-0" />
+              Clear filters
+            </button>
+          )}
+        </div>
+        <div className="ml-auto flex items-center gap-1.5">
+          <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+            View
+          </span>
+          <div className="flex rounded border border-border bg-muted/30 p-0.5">
             {VIEW_MODES.map(({ value, label }) => (
               <button
                 key={value}
                 type="button"
                 onClick={() => setParams({ view: value })}
                 className={cn(
-                  "rounded-md px-3 py-1.5 text-sm font-medium transition-colors",
+                  "rounded px-2 py-1 text-xs font-medium transition-colors",
                   params.view === value
                     ? "bg-background text-foreground shadow-sm"
                     : "text-muted-foreground hover:text-foreground"
@@ -211,74 +457,15 @@ export default function AdminSubmissionsPage() {
             ))}
           </div>
         </div>
-        <div className="flex items-center gap-2">
-          <span className="text-sm text-muted-foreground">Sort:</span>
-          <select
-            value={params.sort}
-            onChange={(e) => setParams({ sort: e.target.value as "newest" | "oldest" })}
-            className="h-9 rounded-md border border-input bg-background px-3 py-1 text-sm"
-          >
-            {SORT_OPTIONS.map(({ value, label }) => (
-              <option key={value} value={value}>
-                {label}
-              </option>
-            ))}
-          </select>
-        </div>
-        <div className="flex flex-wrap items-end gap-3">
-          <div>
-            <Label className="text-xs">Task</Label>
-            <TaskSearchSelect
-              value={params.taskId}
-              onChange={(v) => setParams({ taskId: v })}
-              tasks={tasks}
-              className="mt-1"
-            />
-          </div>
-          <div>
-            <Label className="text-xs">Worker</Label>
-            <select
-              value={params.workerId}
-              onChange={(e) => setParams({ workerId: e.target.value })}
-              className="mt-1 h-9 min-w-[140px] rounded-md border border-input bg-background px-3 py-1 text-sm"
-            >
-              <option value="">All workers</option>
-              {workerUsers.map((u) => (
-                <option key={u.id} value={u.id}>
-                  {u.name}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <Label className="text-xs">From</Label>
-            <Input
-              type="date"
-              value={params.dateFrom}
-              onChange={(e) => setParams({ dateFrom: e.target.value })}
-              className="mt-1 h-9 w-[140px]"
-            />
-          </div>
-          <div>
-            <Label className="text-xs">To</Label>
-            <Input
-              type="date"
-              value={params.dateTo}
-              onChange={(e) => setParams({ dateTo: e.target.value })}
-              className="mt-1 h-9 w-[140px]"
-            />
-          </div>
-        </div>
       </div>
 
-      {/* Toast */}
       {toast && (
         <div
           role="status"
           className={cn(
             "fixed bottom-4 left-1/2 z-50 -translate-x-1/2 rounded-lg px-4 py-2 text-sm font-medium shadow-lg",
             toast.type === "success"
-              ? "bg-green-600 text-white"
+              ? "bg-primary text-primary-foreground"
               : "bg-destructive text-destructive-foreground"
           )}
         >
@@ -286,103 +473,253 @@ export default function AdminSubmissionsPage() {
         </div>
       )}
 
-      {isLoading && (
-        <div className="flex flex-1 items-center justify-center py-12">
-          <p className="text-sm text-muted-foreground">Loading submissions…</p>
-        </div>
-      )}
+      <ConfirmDialogRoot open={approveDialogOpen} onOpenChange={setApproveDialogOpen}>
+        <ConfirmDialogContent
+          title="Approve submission?"
+          description={
+            approveTarget
+              ? `You are approving ${approveTarget.worker?.name ?? "this worker"}'s submission for '${approveTarget.task?.title ?? "this task"}'. The worker will be notified.`
+              : ""
+          }
+          confirmLabel="Approve"
+          variant="default"
+          onConfirm={handleApproveConfirm}
+          onCancel={() => {
+            setApproveDialogOpen(false);
+            setApproveTarget(null);
+          }}
+          loading={reviewMutation.isPending}
+        />
+      </ConfirmDialogRoot>
+
+      <ConfirmDialogRoot
+        open={rejectDialogOpen}
+        onOpenChange={(open) => {
+          setRejectDialogOpen(open);
+          if (!open) {
+            setRejectTarget(null);
+            setRejectNote("");
+          }
+        }}
+      >
+        <RejectDialogContent
+          title="Reject submission?"
+          description={
+            rejectTarget
+              ? `You are rejecting ${rejectTarget.worker?.name ?? "this worker"}'s submission for '${rejectTarget.task?.title ?? "this task"}'.`
+              : ""
+          }
+          confirmLabel="Reject"
+          rejectNote={rejectNote}
+          onRejectNoteChange={setRejectNote}
+          onConfirm={handleRejectConfirm}
+          onCancel={() => {
+            setRejectDialogOpen(false);
+            setRejectTarget(null);
+            setRejectNote("");
+          }}
+          loading={reviewMutation.isPending}
+        />
+      </ConfirmDialogRoot>
+
       {error && (
         <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-4">
           <p className="text-sm text-destructive">{error.message ?? "Failed to load submissions."}</p>
         </div>
       )}
 
-      {!isLoading && !error && (
-        <div className="flex min-h-0 flex-1 gap-0">
-          {/* List: grouped or flat */}
+      {!error && (
+        <div className="relative flex min-h-0 flex-1 flex-col gap-0">
+          {isFetching && (
+            <div
+              className="absolute left-0 right-0 top-0 z-20 h-0.5 overflow-hidden rounded-full bg-muted"
+              aria-hidden
+            >
+              <div
+                className="h-full w-1/3 rounded-full bg-primary"
+                style={{ animation: "loading-bar 1.2s ease-in-out infinite" }}
+              />
+            </div>
+          )}
+          {isLoading && submissions.length === 0 ? (
+            <SubmissionsSkeleton />
+          ) : (
+        <div key={params.status} className="flex min-h-0 flex-1 gap-0 transition-opacity duration-200">
           <div className="min-w-0 flex-1">
             {params.view === "grouped" ? (
-              <div className="space-y-2 overflow-y-auto pr-2">
+              <div className="overflow-y-auto pr-1">
                 {grouped.length === 0 ? (
-                  <p className="py-8 text-center text-sm text-muted-foreground">
-                    No submissions match the filters.
-                  </p>
+                  <SubmissionsEmptyState statusFilter={params.status} className="flex-1" />
                 ) : (
-                  grouped.map(({ taskId, taskTitle, submissions: list }) => {
+                  <div className="space-y-0">
+                  {grouped.map(({ taskId, taskTitle, taskType, submissions: list }) => {
                     const isExpanded = expandedTasks.has(taskId);
+                    const borderColor = taskType != null ? TYPE_BORDER_COLORS[taskType] : "";
                     return (
                       <div
                         key={taskId}
-                        className="rounded-lg border border-border bg-card overflow-hidden"
+                        className={cn(
+                          "overflow-hidden border-b border-border bg-card last:border-b-0",
+                          isExpanded && taskType != null && "border-l-2",
+                          isExpanded && borderColor
+                        )}
                       >
                         <button
                           type="button"
                           onClick={() => toggleTask(taskId)}
-                          className="flex w-full items-center gap-2 border-b border-border bg-muted/30 px-4 py-3 text-left font-medium text-foreground hover:bg-muted/50"
+                          className="flex w-full items-center gap-2 px-3 py-2 text-left hover:bg-muted/40"
                         >
                           {isExpanded ? (
-                            <ChevronDown className="size-4 shrink-0" />
+                            <ChevronDown className="size-3.5 shrink-0 text-muted-foreground" />
                           ) : (
-                            <ChevronRight className="size-4 shrink-0" />
+                            <ChevronRight className="size-3.5 shrink-0 text-muted-foreground" />
                           )}
-                          <span className="truncate">{taskTitle}</span>
-                          <span className="text-xs text-muted-foreground">({list.length})</span>
+                          <span className="min-w-0 flex-1 truncate text-sm font-medium text-foreground">
+                            {taskTitle}
+                          </span>
+                          {taskType != null && (
+                            <span className={cn(
+                              "shrink-0 rounded border border-current/20 px-2 py-0.5 text-[11px] font-medium whitespace-nowrap",
+                              taskType === "survey" && "bg-indigo-500/10 text-indigo-700 dark:bg-indigo-900/50 dark:text-indigo-200",
+                              taskType === "content_review" && "bg-violet-500/10 text-violet-700 dark:bg-violet-900/50 dark:text-violet-200",
+                              taskType === "data_labeling" && "bg-orange-500/10 text-orange-700 dark:bg-orange-900/50 dark:text-orange-200",
+                              taskType === "transcription" && "bg-cyan-500/10 text-cyan-700 dark:bg-cyan-900/50 dark:text-cyan-200"
+                            )}>
+                              {taskType === "survey" && "Survey"}
+                              {taskType === "content_review" && "Content Review"}
+                              {taskType === "data_labeling" && "Data Labeling"}
+                              {taskType === "transcription" && "Transcription"}
+                            </span>
+                          )}
+                          <span className="text-xs text-muted-foreground">
+                            {list.length} submission{list.length !== 1 ? "s" : ""}
+                          </span>
                         </button>
                         {isExpanded && (
-                          <div className="divide-y divide-border">
-                            {list.map((s) => (
-                              <div key={s.id} className="p-2">
-                                <SubmissionRow
-                                  submission={s}
-                                  onClick={() => setSelected(s)}
-                                  isSelected={selected?.id === s.id}
-                                />
+                          <div className="border-t border-border/60">
+                            {list.map((s, idx) => (
+                              <div
+                                key={s.id}
+                                role="button"
+                                tabIndex={0}
+                                onClick={() => setSelected(s)}
+                                onKeyDown={(e) => e.key === "Enter" && setSelected(s)}
+                                className={cn(
+                                  "grid cursor-pointer grid-cols-[1fr_auto_auto_auto_auto] items-center gap-2 py-1.5 pl-6 pr-2 transition-colors hover:bg-muted/30",
+                                  selected?.id === s.id && "bg-primary/5",
+                                  idx % 2 === 1 && "bg-muted/20"
+                                )}
+                              >
+                                <div className="flex min-w-0 items-center gap-2">
+                                  <WorkerAvatar name={s.worker?.name ?? s.workerId} className="size-6" />
+                                  <span className="truncate text-sm font-medium text-foreground">
+                                    {s.worker?.name ?? s.workerId}
+                                  </span>
+                                </div>
+                                <span
+                                  className={cn(
+                                    "w-fit rounded px-1.5 py-0.5 text-[10px] font-medium capitalize",
+                                    STATUS_STYLES[s.status]
+                                  )}
+                                >
+                                  {s.status}
+                                </span>
+                                <span className="text-xs text-muted-foreground whitespace-nowrap">
+                                  {formatTime(s.submittedAt)}
+                                </span>
+                                <span className="text-xs text-muted-foreground">
+                                  {s.proofUrls.length} proof{s.proofUrls.length !== 1 ? "s" : ""}
+                                </span>
+                                <div className="flex items-center gap-0.5" onClick={(e) => e.stopPropagation()}>
+                                  {s.status === "pending" ? (
+                                    <>
+                                      <Tooltip content="Approve">
+                                        <Button
+                                          type="button"
+                                          size="icon"
+                                          variant="ghost"
+                                          className="size-7 rounded-full text-green-600 hover:bg-green-500/15 dark:text-green-400 dark:hover:bg-green-500/20"
+                                          onClick={() => handleQuickApprove(s)}
+                                          disabled={reviewMutation.isPending}
+                                          aria-label="Approve"
+                                        >
+                                          <Check className="size-3.5" />
+                                        </Button>
+                                      </Tooltip>
+                                      <Tooltip content="Reject">
+                                        <Button
+                                          type="button"
+                                          size="icon"
+                                          variant="ghost"
+                                          className="size-7 rounded-full text-destructive hover:bg-destructive/15"
+                                          onClick={() => handleQuickReject(s)}
+                                          disabled={reviewMutation.isPending}
+                                          aria-label="Reject"
+                                        >
+                                          <X className="size-3.5" />
+                                        </Button>
+                                      </Tooltip>
+                                    </>
+                                  ) : (
+                                    <span className="w-14 text-[10px] text-muted-foreground">—</span>
+                                  )}
+                                </div>
                               </div>
                             ))}
                           </div>
                         )}
                       </div>
                     );
-                  })
+                  })}
+                  </div>
                 )}
               </div>
             ) : (
               <div ref={scrollRef} className="h-full overflow-auto">
                 {flatItems.length === 0 ? (
-                  <div className="flex h-full items-center justify-center py-12">
-                    <p className="text-sm text-muted-foreground">
-                      No submissions match the filters.
-                    </p>
-                  </div>
+                  <SubmissionsEmptyState statusFilter={params.status} className="min-h-[320px]" />
                 ) : (
-                  <VirtualizedFlatList
-                    submissions={flatItems}
-                    selectedId={selected?.id ?? null}
-                    onSelect={setSelected}
-                    scrollRef={scrollRef}
-                    rowHeight={ROW_HEIGHT}
-                    overscan={OVERSCAN}
-                  />
+                  <>
+                    {/* Table header */}
+                    <div className="sticky top-0 z-10 grid grid-cols-[1fr_1fr_7rem_80px_80px_48px_64px] gap-2 border-b border-border bg-muted px-3 py-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                      <span>Worker</span>
+                      <span>Task</span>
+                      <span>Type</span>
+                      <span>Status</span>
+                      <span>Submitted</span>
+                      <span>Proofs</span>
+                      <span className="text-right">Actions</span>
+                    </div>
+                    <VirtualizedFlatList
+                      submissions={flatItems}
+                      selectedId={selected?.id ?? null}
+                      onSelect={setSelected}
+                      onApprove={handleQuickApprove}
+                      onReject={handleQuickReject}
+                      isReviewPending={reviewMutation.isPending}
+                      scrollRef={scrollRef}
+                      rowHeight={ROW_HEIGHT}
+                      overscan={OVERSCAN}
+                    />
+                  </>
                 )}
               </div>
             )}
           </div>
 
-          {/* Desktop: detail sidebar */}
           {!isMobile && detailOpen && selected && (
             <aside className="hidden w-full max-w-[min(24rem,90vw)] shrink-0 border-l border-border bg-card md:block">
               <div className="flex h-full flex-col">
-                <div className="flex items-center justify-between border-b border-border p-4">
-                  <h2 className="font-display text-lg font-semibold text-foreground">
-                    Submission
-                  </h2>
+                <div className="flex items-center justify-between border-b border-border px-3 py-2">
+                  <h2 className="font-display text-base font-semibold text-foreground">Submission</h2>
                   <Button
                     variant="ghost"
                     size="icon"
+                    className="size-8"
                     onClick={() => setSelected(null)}
                     aria-label="Close"
                   >
-                    <X className="size-4" />
+                    <X className="size-3.5" />
                   </Button>
                 </div>
                 <div className="min-h-0 flex-1 overflow-hidden">
@@ -402,13 +739,14 @@ export default function AdminSubmissionsPage() {
             </aside>
           )}
         </div>
+          )}
+        </div>
       )}
 
-      {/* Mobile: bottom sheet */}
       {isMobile && (
         <SheetRoot open={detailOpen} onOpenChange={(open) => !open && setSelected(null)}>
           <SheetContent side="bottom" showCloseButton className="max-h-[85vh] flex flex-col p-0">
-            <SheetHeader className="shrink-0 border-b border-border p-4">
+            <SheetHeader className="shrink-0 border-b border-border px-3 py-2">
               <SheetTitle>Submission</SheetTitle>
             </SheetHeader>
             <SheetBody className="min-h-0 flex-1 overflow-auto">
@@ -437,6 +775,9 @@ function VirtualizedFlatList({
   submissions,
   selectedId,
   onSelect,
+  onApprove,
+  onReject,
+  isReviewPending,
   scrollRef,
   rowHeight,
   overscan,
@@ -444,6 +785,9 @@ function VirtualizedFlatList({
   submissions: Submission[];
   selectedId: string | null;
   onSelect: (s: Submission) => void;
+  onApprove: (s: Submission) => void;
+  onReject: (s: Submission) => void;
+  isReviewPending: boolean;
   scrollRef: React.RefObject<HTMLDivElement | null>;
   rowHeight: number;
   overscan: number;
@@ -462,6 +806,9 @@ function VirtualizedFlatList({
       {virtualizer.getVirtualItems().map((virtualRow) => {
         const s = submissions[virtualRow.index];
         if (!s) return null;
+        const workerName = s.worker?.name ?? s.workerId;
+        const taskTitle = s.task?.title ?? s.taskId;
+        const isPending = s.status === "pending";
         return (
           <div
             key={s.id}
@@ -473,13 +820,68 @@ function VirtualizedFlatList({
               height: `${virtualRow.size}px`,
               transform: `translateY(${virtualRow.start}px)`,
             }}
-            className="px-2 py-1.5"
+            className={cn(
+              "grid cursor-pointer grid-cols-[1fr_1fr_7rem_80px_80px_48px_64px] items-center gap-2 border-b border-border/80 px-3 py-1.5 text-sm transition-colors hover:bg-muted/40",
+              selectedId === s.id && "bg-primary/5 ring-inset ring-1 ring-primary/20"
+            )}
+            onClick={() => onSelect(s)}
           >
-            <SubmissionRow
-              submission={s}
-              onClick={() => onSelect(s)}
-              isSelected={selectedId === s.id}
-            />
+            <div className="flex min-w-0 items-center gap-2">
+              <WorkerAvatar name={workerName} className="size-6" />
+              <span className="truncate text-sm font-medium">{workerName}</span>
+            </div>
+            <Link
+              href={`/admin/tasks/${s.taskId}`}
+              className="truncate text-sm text-primary hover:underline"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {taskTitle}
+            </Link>
+            <TaskTypeBadge type={s.task?.type ?? "—"} />
+            <span
+              className={cn(
+                "w-fit rounded-full px-2 py-0.5 text-xs font-medium capitalize",
+                STATUS_STYLES[s.status]
+              )}
+            >
+              {s.status}
+            </span>
+            <span className="text-xs text-muted-foreground">{formatTime(s.submittedAt)}</span>
+            <span className="text-xs text-muted-foreground">{s.proofUrls.length}</span>
+            <div className="flex justify-end gap-1" onClick={(e) => e.stopPropagation()}>
+              {isPending ? (
+                <>
+                  <Button
+                    type="button"
+                    size="icon"
+                    variant="ghost"
+                    className="size-8 rounded-full text-green-600 hover:bg-green-500/15 dark:text-green-400 dark:hover:bg-green-500/20"
+                    onClick={() => onApprove(s)}
+                    disabled={isReviewPending}
+                    aria-label="Approve"
+                  >
+                    {isReviewPending ? (
+                      <Loader2 className="size-4 animate-spin" />
+                    ) : (
+                      <Check className="size-4" />
+                    )}
+                  </Button>
+                  <Button
+                    type="button"
+                    size="icon"
+                    variant="ghost"
+                    className="size-8 rounded-full text-destructive hover:bg-destructive/15"
+                    onClick={() => onReject(s)}
+                    disabled={isReviewPending}
+                    aria-label="Reject"
+                  >
+                    <X className="size-4" />
+                  </Button>
+                </>
+              ) : (
+                <span className="text-xs text-muted-foreground">—</span>
+              )}
+            </div>
           </div>
         );
       })}

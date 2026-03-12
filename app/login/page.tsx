@@ -31,7 +31,7 @@ export default function LoginPage() {
   async function onSubmit(values: LoginFormValues) {
     const result = await login(values.email, values.password);
     if (result.ok) {
-      if (result.user.role === "admin") router.push("/admin");
+      if (result.user.role === "admin") router.push("/admin/dashboard");
       else router.push("/feed");
     } else {
       setError("root", { message: result.error });
@@ -39,8 +39,23 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center bg-background px-4">
-      <div className="w-full max-w-sm space-y-8">
+    <div className="flex min-h-screen">
+      {/* Left: image panel */}
+      <aside className="relative hidden overflow-hidden lg:block lg:w-[70%]">
+        <div
+          className="absolute inset-0 bg-cover bg-center bg-no-repeat"
+          style={{
+            backgroundImage: "url(https://images.unsplash.com/photo-1522071820081-009f0129c71c?auto=format&fit=crop&w=1200&q=80)",
+          }}
+          role="img"
+          aria-label="Team collaboration"
+        />
+        <div className="absolute inset-0 bg-primary/20" />
+      </aside>
+
+      {/* Right: form */}
+      <div className="flex min-h-screen w-full flex-col items-center justify-center bg-background px-4 py-12 lg:w-[30%] lg:px-8">
+        <div className="w-full max-w-sm space-y-8">
         <div className="text-center">
           <h1 className="font-display text-2xl font-semibold tracking-tight text-foreground">
             TaskFlow
@@ -120,6 +135,7 @@ export default function LoginPage() {
         <p className="text-center text-xs text-muted-foreground">
           Demo: admin@app.com / worker@app.com — password: password
         </p>
+        </div>
       </div>
     </div>
   );

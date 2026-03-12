@@ -71,6 +71,8 @@ export type LegacySubmissionStatus =
   | "rejected"
   | "revision_requested";
 
+export type UserStatus = "active" | "suspended";
+
 export interface User {
   id: string;
   email: string;
@@ -79,6 +81,16 @@ export interface User {
   avatarUrl?: string;
   createdAt: string; // ISO date
   updatedAt: string;
+  /** When the user joined (for display); defaults to createdAt */
+  joinedAt?: string;
+  /** active | suspended */
+  status?: UserStatus;
+  /** Workers only */
+  totalSubmissions?: number;
+  /** Workers only; USD cents */
+  totalEarned?: number;
+  /** Last activity timestamp (ISO) */
+  lastActiveAt?: string;
 }
 
 /** Legacy task shape (mockTasks / submissions) */

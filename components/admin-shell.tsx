@@ -2,21 +2,38 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useEffect, useLayoutEffect, useState, useRef, useCallback } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import {
   LayoutDashboard,
   ListTodo,
   Send,
   Users,
-  PanelLeftClose,
-  PanelLeft,
+  ChevronLeft,
+  ChevronRight,
+  Settings,
   Pin,
   Plus,
+  MoreHorizontal,
+  User,
+  LogOut,
 } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
+import { useSubmissionsQuery } from "@/hooks/useSubmissions";
+import { useTasksQuery } from "@/hooks/useTasks";
+import { clearSession } from "@/lib/auth";
+import {
+  getAppSettings,
+  setAppSettings,
+  getPinnedCampaignIds,
+  addPinnedCampaign,
+  removePinnedCampaign,
+  setPinnedCampaignIds,
+} from "@/lib/settings";
+import type { Campaign } from "@/lib/mock/mockCampaigns";
 import { mockCampaigns } from "@/lib/mock/mockCampaigns";
 import { Button } from "@/components/ui/button";
+import { Tooltip } from "@/components/ui/tooltip";
 import {
   SheetRoot,
   SheetTrigger,
@@ -25,40 +42,38 @@ import {
   SheetTitle,
   SheetBody,
 } from "@/components/ui/sheet";
-import { clearSession } from "@/lib/auth";
 import { cn } from "@/lib/utils";
 
-const PINNED_STORAGE_KEY = "taskflow-pinned-campaign-ids";
-
-function getPinnedCampaignIds(): string[] {
-  if (typeof window === "undefined") return [];
-  try {
-    const raw = localStorage.getItem(PINNED_STORAGE_KEY);
-    if (!raw) return mockCampaigns.slice(0, 3).map((c) => c.id);
-    return JSON.parse(raw);
-  } catch {
-    return mockCampaigns.slice(0, 3).map((c) => c.id);
-  }
-}
-
-function setPinnedCampaignIds(ids: string[]): void {
-  if (typeof window === "undefined") return;
-  localStorage.setItem(PINNED_STORAGE_KEY, JSON.stringify(ids.slice(0, 5)));
-}
-
-const ADMIN_NAV: { href: string; label: string; icon: React.ComponentType<{ className?: string }> }[] = [
-  { href: "/admin", label: "Dashboard", icon: LayoutDashboard },
+const ADMIN_NAV: {
+  href: string;
+  label: string;
+  icon: React.ComponentType<{ className?: string }>;
+}[] = [
+  { href: "/admin/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/admin/tasks", label: "Tasks", icon: ListTodo },
   { href: "/admin/submissions", label: "Submissions", icon: Send },
   { href: "/admin/users", label: "Users", icon: Users },
 ];
 
-function UserAvatar({ name, className }: { name: string; className?: string }) {
+const PIN_DOT_COLORS = [
+  "bg-teal-500",
+  "bg-indigo-500",
+  "bg-orange-500",
+  "bg-violet-500",
+];
+
+function UserAvatar({
+  name,
+  className,
+}: {
+  name: string;
+  className?: string;
+}) {
   const initial = name.slice(0, 1).toUpperCase();
   return (
     <div
       className={cn(
-        "flex size-9 shrink-0 items-center justify-center rounded-full bg-primary text-sm font-medium text-primary-foreground",
+        "flex shrink-0 items-center justify-center rounded-full bg-primary text-sm font-medium text-primary-foreground",
         className
       )}
       aria-hidden
@@ -69,56 +84,160 @@ function UserAvatar({ name, className }: { name: string; className?: string }) {
 }
 
 function SidebarNav({
-  navItems = ADMIN_NAV,
   pathname,
   collapsed,
+  pendingCount,
+  activeTasksCount,
   onNavigate,
 }: {
-  navItems: typeof ADMIN_NAV;
   pathname: string;
   collapsed?: boolean;
+  pendingCount: number;
+  activeTasksCount: number;
   onNavigate?: () => void;
 }) {
+  const getBadge = (href: string) => {
+    if (href === "/admin/submissions" && pendingCount > 0)
+      return (
+        <span className="ml-auto rounded-full bg-amber-500/90 px-2 py-0.5 text-xs font-medium text-white">
+          {pendingCount}
+        </span>
+      );
+    if (href === "/admin/tasks" && activeTasksCount > 0)
+      return (
+        <span className="ml-auto rounded-full bg-primary/90 px-2 py-0.5 text-xs font-medium text-primary-foreground">
+          {activeTasksCount}
+        </span>
+      );
+    return null;
+  };
+
   return (
     <nav className="flex flex-col gap-0.5 p-2">
-      {navItems.map(({ href, label, icon: Icon }) => {
-        const active = pathname === href || (href !== "/admin" && pathname.startsWith(href));
-        return (
+      {ADMIN_NAV.map(({ href, label, icon: Icon }) => {
+        const active =
+          pathname === href ||
+          (href !== "/admin" && pathname.startsWith(href));
+        const badge = getBadge(href);
+        const linkContent = (
+          <>
+            <Icon className="size-5 shrink-0" />
+            {!collapsed && (
+              <>
+                <span className="truncate">{label}</span>
+                {badge}
+              </>
+            )}
+          </>
+        );
+        const linkEl = (
           <Link
             key={href}
             href={href}
             onClick={onNavigate}
             className={cn(
               "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors",
+              "border-l-2 border-transparent",
               active
-                ? "bg-sidebar-accent text-sidebar-accent-foreground"
-                : "text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+                ? "border-primary bg-primary/10 text-primary"
+                : "text-muted-foreground hover:bg-muted hover:text-foreground",
               collapsed && "justify-center px-2"
             )}
           >
-            <Icon className="size-5 shrink-0" />
-            {!collapsed && <span>{label}</span>}
+            {linkContent}
           </Link>
         );
+        if (collapsed)
+          return (
+            <Tooltip key={href} content={label} side="right">
+              {linkEl}
+            </Tooltip>
+          );
+        return linkEl;
       })}
     </nav>
   );
 }
 
-function PinnedCampaignsSection({ collapsed }: { collapsed?: boolean }) {
+function PinnedCampaignItem({
+  campaign,
+  dotColor,
+  taskCount,
+}: {
+  campaign: Campaign;
+  dotColor: string;
+  taskCount: number;
+}) {
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!menuOpen) return;
+    function close(e: MouseEvent) {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node))
+        setMenuOpen(false);
+    }
+    document.addEventListener("mousedown", close);
+    return () => document.removeEventListener("mousedown", close);
+  }, [menuOpen]);
+  return (
+    <div className="group relative flex items-center gap-2 rounded-lg px-2 py-1.5 hover:bg-muted">
+      <Link
+        href={`/admin/tasks?campaignId=${campaign.id}`}
+        className="flex min-w-0 flex-1 items-center gap-2"
+      >
+        <span
+          className={cn("size-2 shrink-0 rounded-full", dotColor)}
+          aria-hidden
+        />
+        <span className="truncate text-sm text-foreground">{campaign.name}</span>
+      </Link>
+      <div className="relative shrink-0" ref={menuRef}>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="size-7 opacity-0 group-hover:opacity-100"
+          onClick={() => setMenuOpen((o) => !o)}
+          aria-label="Campaign menu"
+        >
+          <MoreHorizontal className="size-4" />
+        </Button>
+        {menuOpen && (
+          <div className="absolute right-0 top-full z-50 mt-0.5 w-36 rounded-md border border-border bg-popover py-1 shadow-lg">
+            <button
+              type="button"
+              className="w-full px-3 py-1.5 text-left text-sm text-foreground hover:bg-muted"
+              onClick={() => {
+                removePinnedCampaign(campaign.id);
+                setMenuOpen(false);
+              }}
+            >
+              Unpin
+            </button>
+          </div>
+        )}
+      </div>
+      <Tooltip content={`${taskCount} tasks`} side="right">
+        <span className="absolute inset-0" aria-hidden />
+      </Tooltip>
+    </div>
+  );
+}
+
+function PinnedCampaignsSection({
+  collapsed,
+  tasksByCampaign,
+}: {
+  collapsed?: boolean;
+  tasksByCampaign: Map<string, number>;
+}) {
   const [pinPopoverOpen, setPinPopoverOpen] = useState(false);
   const [search, setSearch] = useState("");
-  const [pinnedIds, setPinnedIds] = useState<string[]>([]);
   const [popoverPosition, setPopoverPosition] = useState({ top: 0, left: 0 });
-  const anchorRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    setPinnedIds(getPinnedCampaignIds());
-  }, [pinPopoverOpen]);
+  const pinRef = useRef<HTMLDivElement>(null);
 
   const updatePosition = useCallback(() => {
-    if (anchorRef.current && typeof document !== "undefined") {
-      const rect = anchorRef.current.getBoundingClientRect();
+    if (pinRef.current && typeof document !== "undefined") {
+      const rect = pinRef.current.getBoundingClientRect();
       setPopoverPosition({ top: rect.top, left: rect.right + 4 });
     }
   }, []);
@@ -131,11 +250,40 @@ function PinnedCampaignsSection({ collapsed }: { collapsed?: boolean }) {
     return () => window.removeEventListener("scroll", onScroll);
   }, [pinPopoverOpen, updatePosition]);
 
+  const settings = getAppSettings();
+  const pinnedIds =
+    settings.pinnedCampaignIds.length > 0
+      ? settings.pinnedCampaignIds
+      : mockCampaigns.slice(0, 3).map((c) => c.id);
+
+  const pinnedCampaigns = useMemo(() => {
+    return pinnedIds
+      .map((id) => mockCampaigns.find((c) => c.id === id))
+      .filter(Boolean) as Campaign[];
+  }, [pinnedIds]);
+
+  const availableToPin = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    const list = q
+      ? mockCampaigns.filter(
+          (c) =>
+            c.name.toLowerCase().includes(q) || c.id.toLowerCase().includes(q)
+        )
+      : mockCampaigns;
+    return list.filter((c) => !pinnedIds.includes(c.id));
+  }, [search, pinnedIds]);
+
+  useEffect(() => {
+    if (settings.pinnedCampaignIds.length === 0 && mockCampaigns.length >= 3) {
+      setPinnedCampaignIds(mockCampaigns.slice(0, 3).map((c) => c.id));
+    }
+  }, []);
+
   useEffect(() => {
     if (!pinPopoverOpen) return;
     function handleClickOutside(e: MouseEvent) {
       const target = e.target as Node;
-      if (anchorRef.current?.contains(target)) return;
+      if (pinRef.current?.contains(target)) return;
       const popover = document.querySelector("[data-pin-campaign-popover]");
       if (popover?.contains(target)) return;
       setPinPopoverOpen(false);
@@ -144,65 +292,7 @@ function PinnedCampaignsSection({ collapsed }: { collapsed?: boolean }) {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, [pinPopoverOpen]);
 
-  const pinnedCampaigns = pinnedIds
-    .map((id) => mockCampaigns.find((c) => c.id === id))
-    .filter(Boolean) as typeof mockCampaigns;
-  const availableToPin = mockCampaigns.filter((c) => !pinnedIds.includes(c.id));
-  const filteredToPin = search.trim()
-    ? availableToPin.filter(
-        (c) =>
-          c.name.toLowerCase().includes(search.toLowerCase()) ||
-          c.id.toLowerCase().includes(search.toLowerCase())
-      )
-    : availableToPin;
-
   if (collapsed) return null;
-
-  const popoverContent =
-    pinPopoverOpen && typeof document !== "undefined"
-      ? createPortal(
-          <div
-            data-pin-campaign-popover
-            className="fixed z-[100] w-56 rounded-md border border-border bg-popover p-2 shadow-lg"
-            style={{ top: popoverPosition.top, left: popoverPosition.left }}
-          >
-            <input
-              type="text"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search campaigns..."
-              className="w-full rounded border border-input bg-background px-2 py-1.5 text-sm outline-none placeholder:text-muted-foreground"
-            />
-            <div className="mt-2 max-h-40 overflow-auto">
-              {filteredToPin.length === 0 ? (
-                <p className="py-2 text-center text-xs text-muted-foreground">
-                  {pinnedIds.length >= 5 ? "Max 5 pinned" : "No matching campaigns"}
-                </p>
-              ) : (
-                filteredToPin.slice(0, 8).map((c) => (
-                  <button
-                    key={c.id}
-                    type="button"
-                    className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-sm hover:bg-muted"
-                    onClick={() => {
-                      setPinnedIds((prev) => {
-                        const next = [...prev, c.id].slice(0, 5);
-                        setPinnedCampaignIds(next);
-                        return next;
-                      });
-                      setPinPopoverOpen(false);
-                      setSearch("");
-                    }}
-                  >
-                    {c.name}
-                  </button>
-                ))
-              )}
-            </div>
-          </div>,
-          document.body
-        )
-      : null;
 
   return (
     <div className="px-2 pb-2">
@@ -211,7 +301,7 @@ function PinnedCampaignsSection({ collapsed }: { collapsed?: boolean }) {
           <Pin className="size-3.5" />
           Pinned campaigns
         </span>
-        <div ref={anchorRef} className="relative inline-block">
+        <div className="relative" ref={pinRef}>
           <Button
             variant="ghost"
             size="icon"
@@ -221,20 +311,103 @@ function PinnedCampaignsSection({ collapsed }: { collapsed?: boolean }) {
           >
             <Plus className="size-4" />
           </Button>
-          {popoverContent}
+          {pinPopoverOpen &&
+            typeof document !== "undefined" &&
+            createPortal(
+              <div
+                data-pin-campaign-popover
+                className="fixed z-[100] w-56 rounded-md border border-border bg-popover p-2 shadow-lg"
+                style={{ top: popoverPosition.top, left: popoverPosition.left }}
+              >
+                <input
+                  type="text"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  placeholder="Search campaigns..."
+                  className="w-full rounded border border-input bg-background px-2 py-1.5 text-sm outline-none placeholder:text-muted-foreground"
+                />
+                <div className="mt-2 max-h-40 overflow-auto">
+                  {availableToPin.length === 0 ? (
+                    <p className="py-2 text-center text-xs text-muted-foreground">
+                      {pinnedIds.length >= 5
+                        ? "Max 5 pinned"
+                        : "No matching campaigns"}
+                    </p>
+                  ) : (
+                    availableToPin.slice(0, 8).map((c) => (
+                      <button
+                        key={c.id}
+                        type="button"
+                        className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-sm hover:bg-muted"
+                        onClick={() => {
+                          addPinnedCampaign(c.id);
+                          setPinPopoverOpen(false);
+                          setSearch("");
+                        }}
+                      >
+                        {c.name}
+                      </button>
+                    ))
+                  )}
+                </div>
+              </div>,
+              document.body
+            )}
         </div>
       </div>
       <div className="flex flex-col gap-0.5">
-        {pinnedCampaigns.map((c) => (
-          <Link
-            key={c.id}
-            href={`/admin/tasks?campaignId=${c.id}`}
-            className="flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm text-foreground hover:bg-muted"
-          >
-            <span className="size-2 shrink-0 rounded-full bg-primary" aria-hidden />
-            <span className="truncate">{c.name}</span>
-          </Link>
+        {pinnedCampaigns.map((campaign, i) => (
+          <PinnedCampaignItem
+            key={campaign.id}
+            campaign={campaign}
+            dotColor={PIN_DOT_COLORS[i % PIN_DOT_COLORS.length]}
+            taskCount={tasksByCampaign.get(campaign.id) ?? 0}
+          />
         ))}
+      </div>
+    </div>
+  );
+}
+
+function PinnedCampaignsSectionWrapper({
+  collapsed,
+  tasksByCampaign,
+}: {
+  collapsed?: boolean;
+  tasksByCampaign: Map<string, number>;
+}) {
+  const settings = getAppSettings();
+  if (collapsed || !settings.showPinnedCampaigns) return null;
+  return (
+    <PinnedCampaignsSection collapsed={collapsed} tasksByCampaign={tasksByCampaign} />
+  );
+}
+
+function QuickStatsStrip({
+  pendingReviews,
+  activeTasks,
+  workersOnline,
+  collapsed,
+}: {
+  pendingReviews: number;
+  activeTasks: number;
+  workersOnline: number;
+  collapsed?: boolean;
+}) {
+  const settings = getAppSettings();
+  if (collapsed || !settings.showQuickStats) return null;
+  return (
+    <div className="border-t border-sidebar-border px-3 py-2">
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
+        <span title="Pending reviews">
+          🟡 {pendingReviews}
+        </span>
+        <span title="Active tasks">
+          🟢 {activeTasks}
+        </span>
+        <span title="Workers online">
+          👥 {workersOnline}
+        </span>
       </div>
     </div>
   );
@@ -244,8 +417,60 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
   const { user, isLoading, logout } = useAuth();
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsedState] = useState(() =>
+    getAppSettings().sidebarCollapsed
+  );
   const [mobileSheetOpen, setMobileSheetOpen] = useState(false);
+  const [userPopoverOpen, setUserPopoverOpen] = useState(false);
+  const userPopoverRef = useRef<HTMLDivElement>(null);
+
+  const settings = getAppSettings();
+  const collapsed = sidebarCollapsed ?? settings.sidebarCollapsed;
+
+  const setSidebarCollapsed = useCallback((value: boolean) => {
+    setSidebarCollapsedState(value);
+    setAppSettings({ sidebarCollapsed: value });
+  }, []);
+
+  useEffect(() => {
+    setSidebarCollapsedState(settings.sidebarCollapsed);
+  }, [settings.sidebarCollapsed]);
+
+  const { data: submissions = [] } = useSubmissionsQuery(
+    { status: "pending" },
+    { refetchInterval: 30_000 }
+  );
+  const { data: tasks = [] } = useTasksQuery(undefined, {
+    refetchInterval: 30_000,
+  });
+
+  const pendingCount = submissions.length;
+  const activeTasksCount = useMemo(
+    () => tasks.filter((t) => t.status === "active").length,
+    [tasks]
+  );
+  const [workersOnline, setWorkersOnline] = useState(
+    () => Math.floor(Math.random() * 8) + 1
+  );
+  useEffect(() => {
+    const id = setInterval(
+      () => setWorkersOnline(Math.floor(Math.random() * 8) + 1),
+      30_000
+    );
+    return () => clearInterval(id);
+  }, []);
+
+  const tasksByCampaign = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const t of tasks) {
+      if (t.campaignId)
+        map.set(t.campaignId, (map.get(t.campaignId) ?? 0) + 1);
+    }
+    for (const c of mockCampaigns) {
+      if (!map.has(c.id)) map.set(c.id, 0);
+    }
+    return map;
+  }, [tasks]);
 
   useEffect(() => {
     if (isLoading) return;
@@ -255,6 +480,26 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
     }
   }, [user, isLoading, router]);
 
+  useEffect(() => {
+    if (!userPopoverOpen) return;
+    function handleClickOutside(e: MouseEvent) {
+      if (
+        userPopoverRef.current &&
+        !userPopoverRef.current.contains(e.target as Node)
+      )
+        setUserPopoverOpen(false);
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [userPopoverOpen]);
+
+  const handleSignOut = useCallback(() => {
+    setUserPopoverOpen(false);
+    clearSession();
+    logout();
+    router.replace("/login");
+  }, [logout, router]);
+
   if (isLoading || !user) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-background">
@@ -263,98 +508,208 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
     );
   }
 
-  const sidebarWidth = sidebarCollapsed ? "w-[4rem]" : "w-56";
+  const sidebarWidth = collapsed ? "w-14" : "w-56";
+
+  const bottomSection = (
+    <>
+      <div className="border-t border-sidebar-border" />
+      <div className="flex flex-col gap-0.5 p-2">
+        {!collapsed && (
+          <Link
+            href="/admin/settings"
+            className={cn(
+              "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors",
+              "border-l-2 border-transparent",
+              pathname === "/admin/settings"
+                ? "border-primary bg-primary/10 text-primary"
+                : "text-muted-foreground hover:bg-muted hover:text-foreground"
+            )}
+          >
+            <Settings className="size-5 shrink-0" />
+            <span>Settings</span>
+          </Link>
+        )}
+        {collapsed && (
+          <Tooltip content="Settings" side="right">
+            <Link
+              href="/admin/settings"
+              className="flex items-center justify-center rounded-lg px-2 py-2.5 text-muted-foreground hover:bg-muted hover:text-foreground"
+            >
+              <Settings className="size-5 shrink-0" />
+            </Link>
+          </Tooltip>
+        )}
+        <div className="relative" ref={userPopoverRef}>
+          <button
+            type="button"
+            onClick={() => setUserPopoverOpen((o) => !o)}
+            className={cn(
+              "flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left transition-colors hover:bg-muted",
+              collapsed && "justify-center px-2"
+            )}
+          >
+            <UserAvatar name={user.name} className="size-7" />
+            {!collapsed && (
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm font-medium text-sidebar-foreground">
+                  {user.name}
+                </p>
+                <p className="text-xs capitalize text-muted-foreground">
+                  {user.role}
+                </p>
+              </div>
+            )}
+          </button>
+          {userPopoverOpen && (
+            <div className="absolute bottom-full left-0 right-0 z-50 mb-1 rounded-md border border-border bg-popover py-1 shadow-lg">
+              <Link
+                href="#"
+                className="flex items-center gap-2 px-3 py-2 text-sm text-foreground hover:bg-muted"
+                onClick={(e) => {
+                  e.preventDefault();
+                  setUserPopoverOpen(false);
+                }}
+              >
+                <User className="size-4" />
+                View profile
+              </Link>
+              <Link
+                href="/admin/settings"
+                className="flex items-center gap-2 px-3 py-2 text-sm text-foreground hover:bg-muted"
+                onClick={() => setUserPopoverOpen(false)}
+              >
+                <Settings className="size-4" />
+                Settings
+              </Link>
+              <div className="my-1 border-t border-border" />
+              <button
+                type="button"
+                className="flex w-full items-center gap-2 px-3 py-2 text-sm text-destructive hover:bg-destructive/10"
+                onClick={handleSignOut}
+              >
+                <LogOut className="size-4" />
+                Sign out
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+    </>
+  );
 
   return (
     <div className="flex min-h-screen bg-background">
-      {/* Desktop: collapsible sidebar */}
       <aside
         className={cn(
-          "hidden border-r border-sidebar-border bg-sidebar transition-[width] duration-200 md:flex md:flex-col md:shrink-0",
+          "hidden h-screen border-r border-sidebar-border bg-sidebar md:flex md:flex-col md:shrink-0 md:sticky md:top-0 md:self-start transition-[width] duration-200",
           sidebarWidth
         )}
       >
-        <div className="flex h-14 items-center justify-between gap-2 border-b border-sidebar-border px-3">
-          {!sidebarCollapsed && (
-            <Link href="/admin" className="font-display text-lg font-semibold text-sidebar-foreground truncate">
-              TaskFlow Admin
+        <div className="flex h-14 shrink-0 items-center justify-between gap-2 border-b border-sidebar-border px-2">
+          {!collapsed && (
+            <Link
+              href="/admin"
+              className="flex items-center gap-1 truncate font-display text-lg font-semibold text-sidebar-foreground"
+            >
+              Task<span className="text-primary">Flow</span>
             </Link>
           )}
           <Button
             variant="ghost"
             size="icon"
             className="shrink-0 text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
-            onClick={() => setSidebarCollapsed((c) => !c)}
-            aria-label={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+            onClick={() => setSidebarCollapsed(!collapsed)}
+            aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
           >
-            {sidebarCollapsed ? <PanelLeft className="size-5" /> : <PanelLeftClose className="size-5" />}
+            {collapsed ? (
+              <ChevronRight className="size-5" />
+            ) : (
+              <ChevronLeft className="size-5" />
+            )}
           </Button>
         </div>
-        <div className="flex flex-1 flex-col overflow-hidden">
-          <SidebarNav pathname={pathname} collapsed={sidebarCollapsed} navItems={ADMIN_NAV} />
-          <PinnedCampaignsSection collapsed={sidebarCollapsed} />
-          <div className={cn("border-t border-sidebar-border p-2", sidebarCollapsed && "flex flex-col items-center")}>
-            <div className={cn("flex items-center gap-3 rounded-lg px-3 py-2", sidebarCollapsed && "justify-center px-2")}>
-              <UserAvatar name={user.name} />
-              {!sidebarCollapsed && (
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-medium text-sidebar-foreground">{user.name}</p>
-                  <p className="text-xs text-muted-foreground capitalize">{user.role}</p>
-                </div>
-              )}
-            </div>
-            <Button
-              variant="ghost"
-              size="sm"
-              className={cn("mt-2 w-full text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground", sidebarCollapsed && "w-auto px-2")}
-              onClick={() => {
-                clearSession();
-                logout();
-                router.replace("/login");
-              }}
-            >
-              {sidebarCollapsed ? "Out" : "Sign out"}
-            </Button>
-          </div>
+        <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+          <SidebarNav
+            pathname={pathname}
+            collapsed={collapsed}
+            pendingCount={pendingCount}
+            activeTasksCount={activeTasksCount}
+          />
+          <PinnedCampaignsSectionWrapper
+            collapsed={collapsed}
+            tasksByCampaign={tasksByCampaign}
+          />
+          <QuickStatsStrip
+            pendingReviews={pendingCount}
+            activeTasks={activeTasksCount}
+            workersOnline={workersOnline}
+            collapsed={collapsed}
+          />
         </div>
+        <div className="shrink-0">{bottomSection}</div>
       </aside>
 
-      {/* Mobile: menu button + Sheet */}
       <div className="flex flex-1 flex-col md:min-w-0">
-        <header className="flex h-14 shrink-0 items-center gap-3 border-b border-border bg-background px-4 md:border-l">
+        <header className="flex h-14 shrink-0 items-center justify-end gap-2 border-b border-border bg-background px-4 md:border-l">
           <SheetRoot open={mobileSheetOpen} onOpenChange={setMobileSheetOpen}>
-            <SheetTrigger>
-              <Button variant="ghost" size="icon" className="md:hidden" aria-label="Open menu">
-                <PanelLeft className="size-5" />
-              </Button>
+            <SheetTrigger
+              className="inline-flex md:hidden items-center justify-center rounded-md border border-input bg-background px-3 py-2 text-sm"
+              aria-label="Open menu"
+            >
+              <ChevronRight className="size-5" />
             </SheetTrigger>
-            <SheetContent side="left" showCloseButton={true} className="flex flex-col p-0">
+            <SheetContent
+              side="left"
+              showCloseButton={true}
+              className="flex flex-col p-0 w-64"
+            >
               <SheetHeader className="border-sidebar-border">
                 <SheetTitle>Menu</SheetTitle>
               </SheetHeader>
-              <SheetBody className="flex flex-1 flex-col p-0">
+              <SheetBody className="flex flex-1 flex-col overflow-auto p-0">
                 <SidebarNav
                   pathname={pathname}
-                  navItems={ADMIN_NAV}
+                  pendingCount={pendingCount}
+                  activeTasksCount={activeTasksCount}
                   onNavigate={() => setMobileSheetOpen(false)}
                 />
+                <PinnedCampaignsSection
+                  collapsed={false}
+                  tasksByCampaign={tasksByCampaign}
+                />
+                <QuickStatsStrip
+                  pendingReviews={pendingCount}
+                  activeTasks={activeTasksCount}
+                  workersOnline={workersOnline}
+                  collapsed={false}
+                />
                 <div className="mt-auto border-t border-sidebar-border p-4">
-                  <div className="flex items-center gap-3 pb-3">
-                    <UserAvatar name={user.name} />
-                    <div>
-                      <p className="text-sm font-medium text-sidebar-foreground">{user.name}</p>
-                      <p className="text-xs text-muted-foreground capitalize">{user.role}</p>
+                  <Link
+                    href="/admin/settings"
+                    className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium text-sidebar-foreground hover:bg-sidebar-accent"
+                    onClick={() => setMobileSheetOpen(false)}
+                  >
+                    <Settings className="size-5" />
+                    Settings
+                  </Link>
+                  <div className="mt-2 flex items-center gap-3 rounded-lg px-3 py-2">
+                    <UserAvatar name={user.name} className="size-9" />
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium text-sidebar-foreground">
+                        {user.name}
+                      </p>
+                      <p className="text-xs capitalize text-muted-foreground">
+                        {user.role}
+                      </p>
                     </div>
                   </div>
                   <Button
                     variant="outline"
                     size="sm"
-                    className="w-full border-sidebar-border text-sidebar-foreground hover:bg-sidebar-accent"
+                    className="mt-2 w-full border-sidebar-border text-destructive hover:bg-destructive/10 hover:text-destructive"
                     onClick={() => {
                       setMobileSheetOpen(false);
-                      clearSession();
-                      logout();
-                      router.replace("/login");
+                      handleSignOut();
                     }}
                   >
                     Sign out
@@ -363,13 +718,13 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
               </SheetBody>
             </SheetContent>
           </SheetRoot>
-          <div className="flex flex-1 items-center justify-end gap-2 md:justify-end">
-            <div className="hidden items-center gap-2 md:flex">
-              <UserAvatar name={user.name} className="size-8" />
-              <div className="text-right">
-                <p className="text-sm font-medium text-foreground">{user.name}</p>
-                <p className="text-xs text-muted-foreground capitalize">{user.role}</p>
-              </div>
+          <div className="hidden items-center gap-2 md:flex">
+            <UserAvatar name={user.name} className="size-8" />
+            <div className="text-right">
+              <p className="text-sm font-medium text-foreground">{user.name}</p>
+              <p className="text-xs capitalize text-muted-foreground">
+                {user.role}
+              </p>
             </div>
           </div>
         </header>
