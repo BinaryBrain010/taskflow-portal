@@ -31,7 +31,7 @@ export default function LoginPage() {
   async function onSubmit(values: LoginFormValues) {
     const result = await login(values.email, values.password);
     if (result.ok) {
-      if (result.user.role === "admin") router.push("/admin");
+      if (result.user.role === "admin") router.push("/admin/dashboard");
       else router.push("/feed");
     } else {
       setError("root", { message: result.error });

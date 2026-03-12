@@ -1,6 +1,7 @@
 import type { User } from "@/lib/types";
 
 export const AUTH_STORAGE_KEY = "mtm_auth";
+export const AUTH_INVITED_KEY = "mtm_invited_credentials";
 export const AUTH_COOKIE_NAME = "auth_role";
 export const AUTH_COOKIE_MAX_AGE = 60 * 60 * 24 * 7; // 7 days
 
@@ -35,16 +36,47 @@ export interface AuthSession {
   user: User;
 }
 
+export interface InvitedCredential {
+  email: string;
+  password: string;
+  user: User;
+}
+
+function getInvitedAccounts(): InvitedCredential[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = localStorage.getItem(AUTH_INVITED_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as InvitedCredential[];
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+export function registerInvitedUser(email: string, password: string, user: User): void {
+  if (typeof window === "undefined") return;
+  const list = getInvitedAccounts();
+  const normalized = email.trim().toLowerCase();
+  if (list.some((a) => a.email === normalized)) return;
+  list.push({ email: normalized, password, user });
+  localStorage.setItem(AUTH_INVITED_KEY, JSON.stringify(list));
+}
+
 export function validateCredentials(
   email: string,
   password: string
 ): AuthSession | null {
   const normalizedEmail = email.trim().toLowerCase();
-  const account = HARDCODED_ACCOUNTS.find(
+  const hardcoded = HARDCODED_ACCOUNTS.find(
     (a) => a.email === normalizedEmail && a.password === password
   );
-  if (!account) return null;
-  return { user: account.user };
+  if (hardcoded) return { user: hardcoded.user };
+  const invited = getInvitedAccounts().find(
+    (a) => a.email === normalizedEmail && a.password === password
+  );
+  if (invited) return { user: invited.user };
+  return null;
 }
 
 export function getSessionFromStorage(): AuthSession | null {

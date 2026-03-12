@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import type { Submission, TaskType } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
@@ -127,7 +128,13 @@ export function RecentSubmissionsTable({
                     </div>
                   </td>
                   <td className="max-w-[180px] truncate px-4 py-3 text-sm text-foreground">
-                    {s.task?.title ?? s.taskId}
+                    <Link
+                      href={`/admin/tasks/${s.taskId}`}
+                      className="text-primary hover:underline"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      {s.task?.title ?? s.taskId}
+                    </Link>
                   </td>
                   <td className="px-4 py-3">
                     <span className="rounded-full bg-primary/15 px-2 py-0.5 text-xs font-medium text-primary">

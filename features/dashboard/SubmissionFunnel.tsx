@@ -20,7 +20,7 @@ interface SubmissionFunnelProps {
 export function SubmissionFunnel({ submissions, isLoading }: SubmissionFunnelProps) {
   if (isLoading) {
     return (
-      <div className="rounded-xl border border-border bg-card p-5 shadow-sm">
+      <div className="flex h-full min-h-0 flex-col rounded-xl border border-border bg-card p-5 shadow-sm">
         <h2 className="font-display text-sm font-semibold text-foreground">Submission funnel</h2>
         <div className="mt-3 h-8 w-full animate-pulse rounded-full bg-muted" />
         <div className="mt-4 space-y-2">
@@ -51,13 +51,13 @@ export function SubmissionFunnel({ submissions, isLoading }: SubmissionFunnelPro
   const empty = total === 0;
 
   return (
-    <div className="rounded-xl border border-border bg-card p-5 shadow-sm">
-      <h2 className="font-display text-sm font-semibold text-foreground">Submission funnel</h2>
+    <div className="flex h-full min-h-0 flex-col rounded-xl border border-border bg-card p-5 shadow-sm">
+      <h2 className="shrink-0 font-display text-sm font-semibold text-foreground">Submission funnel</h2>
       {empty ? (
         <p className="mt-3 text-sm text-muted-foreground">No submissions yet.</p>
       ) : (
         <>
-          <div className="mt-3 flex h-3 w-full overflow-hidden rounded-full border border-border bg-muted/30">
+          <div className="mt-3 flex h-3 w-full shrink-0 overflow-hidden rounded-full border border-border bg-muted/30">
             {segments.map(({ status, pct }) =>
               pct > 0 ? (
                 <div
@@ -69,7 +69,7 @@ export function SubmissionFunnel({ submissions, isLoading }: SubmissionFunnelPro
               ) : null
             )}
           </div>
-          <ul className="mt-4 space-y-2">
+          <ul className="mt-4 shrink-0 space-y-2">
             {segments.map(({ status, count, pct }) => (
               <li key={status} className="flex items-center justify-between text-sm">
                 <span className="flex items-center gap-2">

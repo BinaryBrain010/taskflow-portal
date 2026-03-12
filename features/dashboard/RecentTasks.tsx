@@ -30,7 +30,7 @@ interface RecentTasksProps {
 export function RecentTasks({ tasks, isLoading }: RecentTasksProps) {
   if (isLoading) {
     return (
-      <div className="rounded-xl border border-border bg-card p-5 shadow-sm">
+      <div className="flex h-full min-h-0 flex-col rounded-xl border border-border bg-card p-5 shadow-sm">
         <h2 className="font-display text-sm font-semibold text-foreground">Recent tasks</h2>
         <div className="mt-3 space-y-2">
           {[1, 2, 3, 4, 5].map((i) => (
@@ -48,8 +48,8 @@ export function RecentTasks({ tasks, isLoading }: RecentTasksProps) {
   const empty = list.length === 0;
 
   return (
-    <div className="rounded-xl border border-border bg-card p-5 shadow-sm">
-      <div className="flex items-center justify-between">
+    <div className="flex h-full min-h-0 flex-col rounded-xl border border-border bg-card p-5 shadow-sm">
+      <div className="flex shrink-0 items-center justify-between">
         <h2 className="font-display text-sm font-semibold text-foreground">Recent tasks</h2>
         <Link
           href="/admin/tasks"
@@ -65,7 +65,7 @@ export function RecentTasks({ tasks, isLoading }: RecentTasksProps) {
           {list.map((task) => (
             <li key={task.id}>
               <Link
-                href={`/admin/tasks/${task.id}/edit`}
+                href={`/admin/tasks/${task.id}`}
                 className="flex flex-wrap items-center gap-2 rounded-md border border-transparent p-2 transition-colors hover:border-border hover:bg-muted/30"
               >
                 <span className="min-w-0 flex-1 truncate text-sm font-medium text-foreground">

@@ -21,7 +21,7 @@ import {
   UserPlus,
 } from "lucide-react";
 import type { User, UserStatus } from "@/lib/types";
-import { useUsersQuery, useUpdateUserStatus, useBulkUpdateUserStatus, useDeleteUser, useBulkDeleteUsers } from "@/hooks/useUsers";
+import { useUsersQuery, useCreateUser, useUpdateUserStatus, useBulkUpdateUserStatus, useDeleteUser, useBulkDeleteUsers } from "@/hooks/useUsers";
 import { useIsMobile } from "@/hooks/useIsMobile";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -39,6 +39,7 @@ import {
   ConfirmDialogContent,
 } from "@/components/ui/confirm-dialog";
 import { UserDetailSidebar } from "@/components/admin-users/UserDetailSidebar";
+import { InviteUserModal } from "@/components/admin-users/InviteUserModal";
 import { cn } from "@/lib/utils";
 
 const ROLE_TABS = [
@@ -161,6 +162,7 @@ export default function AdminUsersPage() {
   const [deleteTarget, setDeleteTarget] = useState<User | null>(null);
   const [bulkDeleteConfirmOpen, setBulkDeleteConfirmOpen] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
+  const [inviteOpen, setInviteOpen] = useState(false);
 
   const isMobile = useIsMobile();
 
@@ -175,6 +177,8 @@ export default function AdminUsersPage() {
   );
 
   const { data: users = [], isLoading, error } = useUsersQuery(filters);
+  const { data: allUsers = [] } = useUsersQuery();
+  const createUserMutation = useCreateUser();
   const updateStatusMutation = useUpdateUserStatus();
   const bulkUpdateStatusMutation = useBulkUpdateUserStatus();
   const deleteUserMutation = useDeleteUser();
@@ -508,7 +512,12 @@ export default function AdminUsersPage() {
               </button>
             )}
           </div>
-          <Button variant="outline" size="sm" className="border-primary text-primary hover:bg-primary/10">
+          <Button
+            variant="outline"
+            size="sm"
+            className="border-primary text-primary hover:bg-primary/10"
+            onClick={() => setInviteOpen(true)}
+          >
             <UserPlus className="size-4" />
             Invite user
           </Button>
@@ -779,6 +788,17 @@ export default function AdminUsersPage() {
           loading={bulkDeleteMutation.isPending}
         />
       </ConfirmDialogRoot>
+
+      <InviteUserModal
+        open={inviteOpen}
+        onOpenChange={setInviteOpen}
+        existingUsers={allUsers}
+        onSubmit={async (data) => {
+          await createUserMutation.mutateAsync(data);
+        }}
+        onSuccess={(email) => setToast(`Invitation sent to ${email}`)}
+        isSubmitting={createUserMutation.isPending}
+      />
 
       {toast && (
         <div

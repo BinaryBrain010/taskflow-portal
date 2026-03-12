@@ -831,7 +831,7 @@ function VirtualizedFlatList({
               <span className="truncate text-sm font-medium">{workerName}</span>
             </div>
             <Link
-              href={`/admin/tasks/${s.taskId}/edit`}
+              href={`/admin/tasks/${s.taskId}`}
               className="truncate text-sm text-primary hover:underline"
               onClick={(e) => e.stopPropagation()}
             >

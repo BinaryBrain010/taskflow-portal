@@ -8,10 +8,11 @@ import {
   type UseMutationOptions,
 } from "@tanstack/react-query";
 import type { User, UserStatus } from "@/lib/types";
-import type { UserFilters } from "@/lib/services/userService";
+import type { UserFilters, CreateUserDTO } from "@/lib/services/userService";
 import {
   getUsers,
   getUserById,
+  createUser,
   updateUserStatus,
   bulkUpdateUserStatus,
   deleteUser,
@@ -79,6 +80,21 @@ export function useBulkUpdateUserStatus(
     onSuccess: (data, variables, context, mutation) => {
       queryClient.invalidateQueries({ queryKey: userKeys.lists() });
       data.forEach((u) => queryClient.invalidateQueries({ queryKey: userKeys.detail(u.id) }));
+      options?.onSuccess?.(data, variables, context, mutation);
+    },
+    ...options,
+  });
+}
+
+export function useCreateUser(
+  options?: UseMutationOptions<User, Error, CreateUserDTO>
+) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: createUser,
+    onSuccess: (data, variables, context, mutation) => {
+      queryClient.invalidateQueries({ queryKey: userKeys.lists() });
+      queryClient.invalidateQueries({ queryKey: userKeys.detail(data.id) });
       options?.onSuccess?.(data, variables, context, mutation);
     },
     ...options,

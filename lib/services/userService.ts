@@ -1,7 +1,8 @@
-import type { User, UserStatus } from "@/lib/types";
+import type { User, UserStatus, UserRole } from "@/lib/types";
 import { getItem, setItem } from "@/lib/mock/storage";
 import { readDelay, mutationDelay } from "@/lib/mock/delay";
 import { mockUsers } from "@/lib/mock/mockUsers";
+import { registerInvitedUser } from "@/lib/auth";
 
 const USERS_STORAGE_KEY = "users" as const;
 
@@ -10,6 +11,13 @@ export interface UserFilters {
   status?: UserStatus | "all";
   search?: string;
   sort?: "newest" | "oldest" | "most_submissions" | "most_earned";
+}
+
+export interface CreateUserDTO {
+  name: string;
+  email: string;
+  role: UserRole;
+  status?: UserStatus;
 }
 
 function getStored(): User[] {
@@ -54,6 +62,48 @@ function sortUsers(list: User[], sort: UserFilters["sort"]): User[] {
       break;
   }
   return copy;
+}
+
+function nextUserId(list: User[]): string {
+  const nums = list
+    .map((u) => parseInt(u.id.replace(/\D/g, ""), 10))
+    .filter((n) => !Number.isNaN(n));
+  const max = nums.length ? Math.max(...nums) : 0;
+  return `usr_${String(max + 1).padStart(4, "0")}`;
+}
+
+/**
+ * Create a new user (invite). 3–5s delay. Adds user to storage and registers credentials for login.
+ */
+export async function createUser(dto: CreateUserDTO): Promise<User> {
+  await mutationDelay();
+  const list = getStored();
+  const normalizedEmail = dto.email.trim().toLowerCase();
+  if (list.some((u) => u.email.toLowerCase() === normalizedEmail)) {
+    throw new Error("A user with this email already exists");
+  }
+  const now = new Date().toISOString();
+  const id = nextUserId(list);
+  const name = dto.name.trim();
+  const user: User = {
+    id,
+    email: normalizedEmail,
+    name,
+    role: dto.role,
+    avatarUrl: `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(name)}`,
+    createdAt: now,
+    updatedAt: now,
+    joinedAt: now,
+    lastActiveAt: now,
+    status: dto.status ?? "active",
+    totalSubmissions: dto.role === "worker" ? 0 : undefined,
+    totalEarned: dto.role === "worker" ? 0 : undefined,
+  };
+  list.unshift(user);
+  setItem(USERS_STORAGE_KEY, list);
+  const password = "password";
+  registerInvitedUser(normalizedEmail, password, user);
+  return user;
 }
 
 /**

@@ -79,18 +79,18 @@ export default function AdminDashboardPage() {
         isLoadingSubmissions={isLoadingSubmissions}
       />
 
-      {/* Middle row: ~40% | ~35% | ~25% */}
-      <div className="grid gap-6 lg:grid-cols-20">
-        <div className="lg:col-span-8">
+      {/* Middle row: equal-height cards */}
+      <div className="grid gap-6 lg:grid-cols-20 lg:items-stretch">
+        <div className="h-full min-h-0 lg:col-span-8">
           <RecentTasks tasks={recentTasks} isLoading={isLoadingTasks} />
         </div>
-        <div className="lg:col-span-7">
+        <div className="h-full min-h-0 lg:col-span-7">
           <SubmissionFunnel
             submissions={submissions}
             isLoading={isLoadingSubmissions}
           />
         </div>
-        <div className="lg:col-span-5">
+        <div className="h-full min-h-0 lg:col-span-5">
           <TaskTypeBreakdown tasks={tasks} isLoading={isLoadingTasks} />
         </div>
       </div>

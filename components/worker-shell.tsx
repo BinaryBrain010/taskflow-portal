@@ -9,6 +9,7 @@ import {
   CheckSquare,
   DollarSign,
   User,
+  Settings,
   LogOut,
   ChevronDown,
 } from "lucide-react";
@@ -25,6 +26,7 @@ import {
   SheetBody,
 } from "@/components/ui/sheet";
 import { clearSession } from "@/lib/auth";
+import { getDisplayName } from "@/lib/profileDisplayName";
 import { cn } from "@/lib/utils";
 
 const FEED_NAV: { href: string; label: string }[] = [
@@ -75,6 +77,7 @@ export function WorkerShell({ children }: { children: React.ReactNode }) {
     mySubmissions
       .filter((s) => s.status === "approved" && s.task)
       .reduce((sum, s) => sum + (s.task!.reward ?? 0), 0);
+  const displayName = user ? getDisplayName(user.id, user.name) : "";
 
   useEffect(() => {
     if (isLoading) return;
@@ -143,6 +146,19 @@ export function WorkerShell({ children }: { children: React.ReactNode }) {
                   {label}
                 </Link>
               ))}
+              <Link
+                href="/feed/settings"
+                onClick={() => setMobileMenuOpen(false)}
+                className={cn(
+                  "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors",
+                  pathname === "/feed/settings"
+                    ? "bg-sidebar-accent text-sidebar-accent-foreground"
+                    : "text-sidebar-foreground hover:bg-sidebar-accent"
+                )}
+              >
+                <Settings className="size-5 shrink-0" />
+                Settings
+              </Link>
               <div className="mt-auto border-t border-sidebar-border pt-4">
                 <p className="px-3 pb-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">
                   Account
@@ -200,7 +216,7 @@ export function WorkerShell({ children }: { children: React.ReactNode }) {
               aria-expanded={profileOpen}
               aria-haspopup="true"
             >
-              <UserAvatar name={user.name} className="size-8" />
+              <UserAvatar name={displayName} className="size-8" />
               <ChevronDown
                 className={cn("hidden size-4 text-muted-foreground md:block", profileOpen && "rotate-180")}
               />
@@ -211,9 +227,9 @@ export function WorkerShell({ children }: { children: React.ReactNode }) {
                 role="menu"
               >
                 <div className="flex items-center gap-3 px-3 py-2">
-                  <UserAvatar name={user.name} className="size-10" />
+                  <UserAvatar name={displayName} className="size-10" />
                   <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-medium text-foreground">{user.name}</p>
+                    <p className="truncate text-sm font-medium text-foreground">{displayName}</p>
                     <p className="truncate text-xs text-muted-foreground">{user.email}</p>
                   </div>
                 </div>
@@ -221,15 +237,24 @@ export function WorkerShell({ children }: { children: React.ReactNode }) {
                   Total earned: {formatEarned(totalEarnedCents)}
                 </p>
                 <div className="border-t border-border" />
-                <button
-                  type="button"
+                <Link
+                  href="/feed/profile"
                   className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-foreground hover:bg-muted"
                   role="menuitem"
                   onClick={() => setProfileOpen(false)}
                 >
                   <User className="size-4" />
                   Edit profile
-                </button>
+                </Link>
+                <Link
+                  href="/feed/settings"
+                  className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-foreground hover:bg-muted"
+                  role="menuitem"
+                  onClick={() => setProfileOpen(false)}
+                >
+                  <Settings className="size-4" />
+                  Settings
+                </Link>
                 <button
                   type="button"
                   className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-foreground hover:bg-muted"

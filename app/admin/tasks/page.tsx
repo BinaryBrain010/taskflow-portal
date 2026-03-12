@@ -15,24 +15,18 @@ import {
   type SortingState,
 } from "@tanstack/react-table";
 import { useQueryStates, parseAsStringLiteral, parseAsString, parseAsInteger } from "nuqs";
-import {
-  ChevronDown,
-  ChevronRight,
-  Pencil,
-  Trash2,
-  ListChecks,
-  Search,
-} from "lucide-react";
+import { Pencil, Trash2, ListChecks, Search, X } from "lucide-react";
+import { useRouter } from "next/navigation";
 import type { Task, TaskType, TaskStatus } from "@/lib/types";
 import { useTasksQuery, useDeleteTasks, useBulkUpdateTasks } from "@/hooks/useTasks";
 import { mockCampaigns } from "@/lib/mock/mockCampaigns";
-import { TaskRowExpansion } from "@/components/admin-tasks/TaskRowExpansion";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { SelectDropdown } from "@/components/ui/select-dropdown";
 import { FilterDateRangePicker } from "@/components/admin-submissions/FilterDateRangePicker";
+import { CampaignSearchSelect } from "@/components/admin-tasks/CampaignSearchSelect";
 import { Tooltip } from "@/components/ui/tooltip";
 import {
   ConfirmDialogRoot,
@@ -107,11 +101,6 @@ const FILTER_STATUS_OPTIONS = [
   ...TASK_STATUSES.map((t) => ({ value: t.value, label: t.value.charAt(0).toUpperCase() + t.value.slice(1) })),
 ];
 
-const FILTER_CAMPAIGN_OPTIONS = [
-  { value: "", label: "All campaigns" },
-  ...mockCampaigns.map((c) => ({ value: c.id, label: c.name })),
-];
-
 const SORT_OPTIONS = [
   { value: "createdAt-desc", label: "Newest first" },
   { value: "createdAt-asc", label: "Oldest first" },
@@ -146,7 +135,7 @@ const PAGE_SIZES = [10, 25, 50, 100];
 export default function AdminTasksPage() {
   const [params, setParams] = useQueryStates(taskFiltersParsers);
   const [rowSelection, setRowSelection] = useState<Record<string, boolean>>({});
-  const [expanded, setExpanded] = useState<Record<string, boolean> | true>({});
+  const router = useRouter();
   const sorting: SortingState = useMemo(
     () => [{ id: params.sortId, desc: params.sortDir === "desc" }],
     [params.sortId, params.sortDir]
@@ -170,6 +159,26 @@ export default function AdminTasksPage() {
     }),
     [params.type, params.status, params.campaignId, params.expiresFrom, params.expiresTo]
   );
+
+  const hasActiveFilters =
+    params.type !== "all" ||
+    params.status !== "all" ||
+    params.campaignId !== "" ||
+    params.expiresFrom !== "" ||
+    params.expiresTo !== "" ||
+    searchQuery.trim() !== "";
+
+  const clearFilters = () => {
+    setParams({
+      type: "all",
+      status: "all",
+      campaignId: "",
+      expiresFrom: "",
+      expiresTo: "",
+      page: 1,
+    });
+    setSearchQuery("");
+  };
 
   const { data: tasks = [], isLoading, error } = useTasksQuery(filters);
   const deleteTasksMutation = useDeleteTasks();
@@ -248,28 +257,6 @@ export default function AdminTasksPage() {
         size: 40,
       },
       {
-        id: "expand",
-        header: () => null,
-        cell: ({ row }) => (
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              row.toggleExpanded();
-            }}
-            className="flex size-7 shrink-0 items-center justify-center rounded-full hover:bg-muted text-muted-foreground"
-            aria-label={row.getIsExpanded() ? "Collapse" : "Expand"}
-          >
-            {row.getIsExpanded() ? (
-              <ChevronDown className="size-3.5" />
-            ) : (
-              <ChevronRight className="size-3.5" />
-            )}
-          </button>
-        ),
-        size: 32,
-      },
-      {
         accessorKey: "title",
         header: ({ column }) => (
           <SortHeader column={column} label="Title" sorting={sorting} setSort={setSort} />
@@ -278,13 +265,9 @@ export default function AdminTasksPage() {
           const title = getValue() as string;
           return (
             <Tooltip content={title} side="top">
-              <Link
-                href={`/admin/tasks/${row.original.id}`}
-                className="block truncate font-medium text-foreground text-primary hover:underline max-w-[200px]"
-                onClick={(e) => e.stopPropagation()}
-              >
+              <span className="block max-w-[200px] truncate font-medium text-foreground">
                 {title}
-              </Link>
+              </span>
             </Tooltip>
           );
         },
@@ -363,7 +346,7 @@ export default function AdminTasksPage() {
           const display = name.length > 18 ? `${name.slice(0, 18)}…` : name;
           return (
             <Tooltip content={name} side="top">
-              <span className="text-muted-foreground line-clamp-1 max-w-[120px] cursor-default">
+              <span className="max-w-[120px] truncate text-muted-foreground cursor-default block">
                 {display}
               </span>
             </Tooltip>
@@ -431,12 +414,9 @@ export default function AdminTasksPage() {
     columns,
     state: {
       rowSelection,
-      expanded,
       sorting,
     },
     onRowSelectionChange: setRowSelection,
-    onExpandedChange: (updater) =>
-      setExpanded((prev) => (typeof updater === "function" ? updater(prev) : updater)),
     onSortingChange: () => {},
     getCoreRowModel: getCoreRowModel(),
     getRowId: (row) => row.id,
@@ -552,15 +532,13 @@ export default function AdminTasksPage() {
           <SelectDropdown.Trigger className="h-9 min-w-[100px] rounded border border-input px-2 text-xs" />
           <SelectDropdown.Content />
         </SelectDropdown.Root>
-        <SelectDropdown.Root
+        <CampaignSearchSelect
           value={params.campaignId}
-          onValueChange={(v) => setParams({ campaignId: v, page: 1 })}
-          options={FILTER_CAMPAIGN_OPTIONS}
+          onChange={(v) => setParams({ campaignId: v, page: 1 })}
+          campaigns={mockCampaigns}
           placeholder="All campaigns"
-        >
-          <SelectDropdown.Trigger className="h-9 min-w-[100px] rounded border border-input px-2 text-xs" />
-          <SelectDropdown.Content />
-        </SelectDropdown.Root>
+          className="[&_button]:h-8 [&_button]:min-w-[100px] [&_button]:rounded [&_button]:px-2 [&_button]:text-xs"
+        />
         <div className="[&_button]:h-9 [&_button]:min-w-[140px] [&_button]:rounded [&_button]:px-2 [&_button]:text-xs">
           <FilterDateRangePicker
             dateFrom={params.expiresFrom}
@@ -585,6 +563,17 @@ export default function AdminTasksPage() {
             className="h-9 pl-8 text-sm"
           />
         </div>
+        {hasActiveFilters && (
+          <button
+            type="button"
+            onClick={clearFilters}
+            className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
+            aria-label="Clear all filters"
+          >
+            <X className="size-3.5 shrink-0" />
+            Clear filters
+          </button>
+        )}
       </div>
 
       {/* Bulk actions */}
@@ -661,32 +650,29 @@ export default function AdminTasksPage() {
                   </tr>
                 ) : (
                   table.getRowModel().rows.map((row) => (
-                    <React.Fragment key={row.id}>
-                      <tr
-                        onClick={() => row.toggleExpanded()}
-                        className={cn(
-                          "border-b border-border/80 cursor-pointer transition-colors hover:bg-muted/40",
-                          row.getIsSelected() && "bg-primary/5"
-                        )}
-                      >
-                        {row.getVisibleCells().map((cell) => (
-                          <td
-                            key={cell.id}
-                            className="px-4 py-2 text-sm"
-                            style={{ width: cell.column.getSize() }}
-                          >
-                            {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                          </td>
-                        ))}
-                      </tr>
-                      {row.getIsExpanded() && (
-                        <tr>
-                          <td colSpan={columns.length} className="p-0">
-                            <TaskRowExpansion task={row.original} />
-                          </td>
-                        </tr>
+                    <tr
+                      key={row.id}
+                      role="button"
+                      tabIndex={0}
+                      onClick={() => router.push(`/admin/tasks/${row.original.id}`)}
+                      onKeyDown={(e) =>
+                        e.key === "Enter" && router.push(`/admin/tasks/${row.original.id}`)
+                      }
+                      className={cn(
+                        "border-b border-border/80 cursor-pointer transition-colors hover:bg-muted/40",
+                        row.getIsSelected() && "bg-primary/5"
                       )}
-                    </React.Fragment>
+                    >
+                      {row.getVisibleCells().map((cell) => (
+                        <td
+                          key={cell.id}
+                          className="whitespace-nowrap px-4 py-2 text-sm"
+                          style={{ width: cell.column.getSize() }}
+                        >
+                          {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                        </td>
+                      ))}
+                    </tr>
                   ))
                 )}
               </tbody>

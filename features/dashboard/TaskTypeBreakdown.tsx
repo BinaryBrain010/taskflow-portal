@@ -44,7 +44,7 @@ export function TaskTypeBreakdown({ tasks, isLoading }: TaskTypeBreakdownProps) 
 
   if (isLoading) {
     return (
-      <div className="rounded-xl border border-border bg-card p-5 shadow-sm">
+      <div className="flex h-full min-h-0 flex-col rounded-xl border border-border bg-card p-5 shadow-sm">
         <h2 className="font-display text-sm font-semibold text-foreground">Task type breakdown</h2>
         <div className="mt-3 flex h-40 items-center justify-center">
           <div className="size-32 animate-pulse rounded-full bg-muted" />
@@ -61,8 +61,8 @@ export function TaskTypeBreakdown({ tasks, isLoading }: TaskTypeBreakdownProps) 
   const empty = total === 0;
 
   return (
-    <div className="rounded-xl border border-border bg-card p-5 shadow-sm">
-      <h2 className="font-display text-sm font-semibold text-foreground">Task type breakdown</h2>
+    <div className="flex h-full min-h-0 flex-col rounded-xl border border-border bg-card p-5 shadow-sm">
+      <h2 className="shrink-0 font-display text-sm font-semibold text-foreground">Task type breakdown</h2>
       {empty ? (
         <p className="mt-3 text-sm text-muted-foreground">No tasks yet.</p>
       ) : (
