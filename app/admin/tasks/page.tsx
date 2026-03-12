@@ -21,6 +21,7 @@ import {
   Pencil,
   Trash2,
   ListChecks,
+  Search,
 } from "lucide-react";
 import type { Task, TaskType, TaskStatus } from "@/lib/types";
 import { useTasksQuery, useDeleteTasks, useBulkUpdateTasks } from "@/hooks/useTasks";
@@ -31,6 +32,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { SelectDropdown } from "@/components/ui/select-dropdown";
+import { FilterDateRangePicker } from "@/components/admin-submissions/FilterDateRangePicker";
 import { Tooltip } from "@/components/ui/tooltip";
 import {
   ConfirmDialogRoot,
@@ -96,18 +98,23 @@ function getCampaignName(id: string | null): string {
 }
 
 const FILTER_TYPE_OPTIONS = [
-  { value: "all", label: "All" },
+  { value: "all", label: "All types" },
   ...TASK_TYPES.map((t) => ({ value: t.value, label: TYPE_LABELS[t.value] })),
 ];
 
 const FILTER_STATUS_OPTIONS = [
-  { value: "all", label: "All" },
+  { value: "all", label: "All status" },
   ...TASK_STATUSES.map((t) => ({ value: t.value, label: t.value.charAt(0).toUpperCase() + t.value.slice(1) })),
 ];
 
 const FILTER_CAMPAIGN_OPTIONS = [
-  { value: "", label: "All" },
+  { value: "", label: "All campaigns" },
   ...mockCampaigns.map((c) => ({ value: c.id, label: c.name })),
+];
+
+const SORT_OPTIONS = [
+  { value: "createdAt-desc", label: "Newest first" },
+  { value: "createdAt-asc", label: "Oldest first" },
 ];
 
 const taskFiltersParsers = {
@@ -151,6 +158,7 @@ export default function AdminTasksPage() {
   const [bulkRewardValue, setBulkRewardValue] = useState("");
   const [bulkCampaignId, setBulkCampaignId] = useState("");
   const [toast, setToast] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
 
   const filters = useMemo(
     () => ({
@@ -249,26 +257,37 @@ export default function AdminTasksPage() {
               e.stopPropagation();
               row.toggleExpanded();
             }}
-            className="p-1 rounded hover:bg-muted"
+            className="flex size-7 shrink-0 items-center justify-center rounded-full hover:bg-muted text-muted-foreground"
             aria-label={row.getIsExpanded() ? "Collapse" : "Expand"}
           >
             {row.getIsExpanded() ? (
-              <ChevronDown className="size-4 text-muted-foreground" />
+              <ChevronDown className="size-3.5" />
             ) : (
-              <ChevronRight className="size-4 text-muted-foreground" />
+              <ChevronRight className="size-3.5" />
             )}
           </button>
         ),
-        size: 36,
+        size: 32,
       },
       {
         accessorKey: "title",
         header: ({ column }) => (
           <SortHeader column={column} label="Title" sorting={sorting} setSort={setSort} />
         ),
-        cell: ({ getValue }) => (
-          <span className="font-medium text-foreground line-clamp-1">{getValue() as string}</span>
-        ),
+        cell: ({ row, getValue }) => {
+          const title = getValue() as string;
+          return (
+            <Tooltip content={title} side="top">
+              <Link
+                href={`/admin/tasks/${row.original.id}`}
+                className="block truncate font-medium text-foreground text-primary hover:underline max-w-[200px]"
+                onClick={(e) => e.stopPropagation()}
+              >
+                {title}
+              </Link>
+            </Tooltip>
+          );
+        },
       },
       {
         accessorKey: "type",
@@ -278,7 +297,7 @@ export default function AdminTasksPage() {
         cell: ({ getValue }) => {
           const type = getValue() as TaskType;
           return (
-            <span className={cn("inline-flex rounded-full px-2.5 py-1 text-xs font-medium", TYPE_BADGE_STYLES[type])}>
+            <span className={cn("inline-flex shrink-0 items-center rounded-full border border-current/20 px-2 py-0.5 text-[11px] font-medium whitespace-nowrap", TYPE_BADGE_STYLES[type])}>
               {TYPE_LABELS[type]}
             </span>
           );
@@ -293,7 +312,7 @@ export default function AdminTasksPage() {
           const status = getValue() as TaskStatus | undefined;
           if (status == null) return <EmptyCell />;
           return (
-            <span className={cn("inline-flex rounded-full px-2.5 py-1 text-xs font-medium capitalize", STATUS_BADGE_STYLES[status])}>
+            <span className={cn("inline-flex shrink-0 items-center rounded-full border border-current/20 px-2 py-0.5 text-[11px] font-medium capitalize whitespace-nowrap", STATUS_BADGE_STYLES[status])}>
               {status}
             </span>
           );
@@ -366,44 +385,42 @@ export default function AdminTasksPage() {
         id: "actions",
         header: () => <span className="text-muted-foreground">Actions</span>,
         cell: ({ row }) => (
-          <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
+          <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
             <Tooltip content="Edit" side="top">
               <Link
                 href={`/admin/tasks/${row.original.id}/edit`}
-                className={cn(buttonVariants({ variant: "ghost", size: "icon" }), "size-8 rounded-full hover:bg-muted")}
+                className={cn(buttonVariants({ variant: "ghost", size: "icon" }), "size-7 rounded-full hover:bg-muted")}
                 aria-label="Edit"
               >
-                <Pencil className="size-4" />
+                <Pencil className="size-3.5" />
               </Link>
             </Tooltip>
             <Tooltip content="Delete" side="top">
               <Button
                 variant="ghost"
                 size="icon"
-                className="size-8 rounded-full text-destructive hover:bg-destructive/10 hover:text-destructive"
+                className="size-7 rounded-full text-destructive hover:bg-destructive/10 hover:text-destructive"
                 onClick={() => {
                   setDeleteTargetIds([row.original.id]);
                   setDeleteConfirmOpen(true);
                 }}
                 aria-label="Delete"
               >
-                <Trash2 className="size-4" />
+                <Trash2 className="size-3.5" />
               </Button>
             </Tooltip>
-            <Tooltip content="View Submissions" side="top">
-              <Button
-                variant="ghost"
-                size="icon"
-                className="size-8 rounded-full hover:bg-muted"
-                onClick={() => row.toggleExpanded()}
+            <Tooltip content="View submissions" side="top">
+              <Link
+                href={`/admin/submissions?taskId=${row.original.id}`}
+                className={cn(buttonVariants({ variant: "ghost", size: "icon" }), "size-7 rounded-full hover:bg-muted")}
                 aria-label="View submissions"
               >
-                <ListChecks className="size-4" />
-              </Button>
+                <ListChecks className="size-3.5" />
+              </Link>
             </Tooltip>
           </div>
         ),
-        size: 140,
+        size: 120,
       },
     ],
     [setSort, sorting]
@@ -480,79 +497,93 @@ export default function AdminTasksPage() {
     return () => clearTimeout(t);
   }, [toast]);
 
+  const sortValue = SORT_OPTIONS.some((o) => o.value === `${params.sortId}-${params.sortDir}`)
+    ? `${params.sortId}-${params.sortDir}`
+    : "createdAt-desc";
+
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <h1 className="font-display text-2xl font-semibold tracking-tight text-foreground">
+    <div className="flex min-h-0 flex-1 flex-col gap-3 px-2">
+      {/* Page header: match submissions — title + divider + count + New task */}
+      <div className="flex flex-wrap items-center gap-3 border-b border-border pb-2">
+        <h1 className="font-display text-xl font-semibold tracking-tight text-foreground">
           Tasks
         </h1>
-        <Link href="/admin/tasks/new" className={buttonVariants()}>
+        <div className="h-4 w-px shrink-0 bg-border" aria-hidden />
+        <span className="text-sm text-muted-foreground">
+          {sortedTasks.length} task{sortedTasks.length !== 1 ? "s" : ""}
+        </span>
+        <Link href="/admin/tasks/new" className={cn(buttonVariants(), "ml-auto")}>
           New task
         </Link>
       </div>
 
-      {/* Filters */}
-      <div className="rounded-xl border border-border bg-card p-4">
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
-          <div>
-            <Label htmlFor="filter-type" className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Type</Label>
-            <SelectDropdown.Root
-              value={params.type}
-              onValueChange={(v) => setParams({ type: v as typeof params.type, page: 1 })}
-              options={FILTER_TYPE_OPTIONS}
-              placeholder="All"
-              className="mt-1.5"
-            >
-              <SelectDropdown.Trigger />
-              <SelectDropdown.Content />
-            </SelectDropdown.Root>
-          </div>
-          <div>
-            <Label htmlFor="filter-status" className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Status</Label>
-            <SelectDropdown.Root
-              value={params.status}
-              onValueChange={(v) => setParams({ status: v as typeof params.status, page: 1 })}
-              options={FILTER_STATUS_OPTIONS}
-              placeholder="All"
-              className="mt-1.5"
-            >
-              <SelectDropdown.Trigger />
-              <SelectDropdown.Content />
-            </SelectDropdown.Root>
-          </div>
-          <div>
-            <Label htmlFor="filter-campaign" className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Campaign</Label>
-            <SelectDropdown.Root
-              value={params.campaignId}
-              onValueChange={(v) => setParams({ campaignId: v, page: 1 })}
-              options={FILTER_CAMPAIGN_OPTIONS}
-              placeholder="All"
-              className="mt-1.5"
-            >
-              <SelectDropdown.Trigger showSearchIcon />
-              <SelectDropdown.Content />
-            </SelectDropdown.Root>
-          </div>
-          <div>
-            <Label htmlFor="filter-from" className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Expires from</Label>
-            <Input
-              id="filter-from"
-              type="date"
-              value={params.expiresFrom}
-              onChange={(e) => setParams({ expiresFrom: e.target.value, page: 1 })}
-              className="mt-1.5 h-9 rounded-lg"
-            />
-          </div>
-          <div>
-            <Label htmlFor="filter-to" className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Expires to</Label>
-            <Input
-              id="filter-to"
-              type="date"
-              value={params.expiresTo}
-              onChange={(e) => setParams({ expiresTo: e.target.value, page: 1 })}
-              className="mt-1.5 h-9 rounded-lg"
-            />
-          </div>
+      {/* Single filter bar: match submissions — flat, no card, h-9 controls */}
+      <div className="flex flex-wrap items-center gap-2 border-b border-border bg-background py-2">
+        <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+          Sort
+        </span>
+        <SelectDropdown.Root
+          value={sortValue}
+          onValueChange={(v) => {
+            const [id, dir] = v.split("-") as [string, "asc" | "desc"];
+            setParams({ sortId: id, sortDir: dir, page: 1 });
+          }}
+          options={SORT_OPTIONS}
+          placeholder="Sort"
+        >
+          <SelectDropdown.Trigger className="h-9 min-w-[120px] rounded border border-input px-2 text-xs" />
+          <SelectDropdown.Content />
+        </SelectDropdown.Root>
+        <SelectDropdown.Root
+          value={params.type}
+          onValueChange={(v) => setParams({ type: v as typeof params.type, page: 1 })}
+          options={FILTER_TYPE_OPTIONS}
+          placeholder="All types"
+        >
+          <SelectDropdown.Trigger className="h-9 min-w-[100px] rounded border border-input px-2 text-xs" />
+          <SelectDropdown.Content />
+        </SelectDropdown.Root>
+        <SelectDropdown.Root
+          value={params.status}
+          onValueChange={(v) => setParams({ status: v as typeof params.status, page: 1 })}
+          options={FILTER_STATUS_OPTIONS}
+          placeholder="All status"
+        >
+          <SelectDropdown.Trigger className="h-9 min-w-[100px] rounded border border-input px-2 text-xs" />
+          <SelectDropdown.Content />
+        </SelectDropdown.Root>
+        <SelectDropdown.Root
+          value={params.campaignId}
+          onValueChange={(v) => setParams({ campaignId: v, page: 1 })}
+          options={FILTER_CAMPAIGN_OPTIONS}
+          placeholder="All campaigns"
+        >
+          <SelectDropdown.Trigger className="h-9 min-w-[100px] rounded border border-input px-2 text-xs" />
+          <SelectDropdown.Content />
+        </SelectDropdown.Root>
+        <div className="[&_button]:h-9 [&_button]:min-w-[140px] [&_button]:rounded [&_button]:px-2 [&_button]:text-xs">
+          <FilterDateRangePicker
+            dateFrom={params.expiresFrom}
+            dateTo={params.expiresTo}
+            onChange={({ dateFrom, dateTo }) => setParams({ expiresFrom: dateFrom, expiresTo: dateTo, page: 1 })}
+            fromPlaceholder="From"
+            toPlaceholder="To"
+          />
+        </div>
+        <div className="relative w-40 transition-[width] duration-200 focus-within:w-56">
+          <Search
+            className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground"
+            aria-hidden
+          />
+          <Input
+            type="search"
+            role="search"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Search..."
+            aria-label="Search tasks"
+            className="h-9 pl-8 text-sm"
+          />
         </div>
       </div>
 
@@ -608,11 +639,11 @@ export default function AdminTasksPage() {
             <table className="w-full min-w-[900px] border-collapse">
               <thead>
                 {table.getHeaderGroups().map((headerGroup) => (
-                  <tr key={headerGroup.id} className="border-b border-border bg-muted/40">
+                  <tr key={headerGroup.id} className="border-b border-border bg-muted">
                     {headerGroup.headers.map((header) => (
                       <th
                         key={header.id}
-                        className="px-4 py-3.5 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground"
+                        className="px-4 py-2 text-left text-[10px] font-semibold uppercase tracking-wider text-muted-foreground"
                         style={{ width: header.getSize() }}
                       >
                         {flexRender(header.column.columnDef.header, header.getContext())}
@@ -634,14 +665,14 @@ export default function AdminTasksPage() {
                       <tr
                         onClick={() => row.toggleExpanded()}
                         className={cn(
-                          "border-b border-border/80 transition-colors cursor-pointer hover:bg-muted/40",
+                          "border-b border-border/80 cursor-pointer transition-colors hover:bg-muted/40",
                           row.getIsSelected() && "bg-primary/5"
                         )}
                       >
                         {row.getVisibleCells().map((cell) => (
                           <td
                             key={cell.id}
-                            className="px-4 py-4 text-sm"
+                            className="px-4 py-2 text-sm"
                             style={{ width: cell.column.getSize() }}
                           >
                             {flexRender(cell.column.columnDef.cell, cell.getContext())}
@@ -833,7 +864,7 @@ function SortHeader({
     <button
       type="button"
       onClick={() => setSort(column.id, !isDesc)}
-      className="flex items-center gap-1 font-medium hover:text-foreground"
+      className="flex items-center gap-1 hover:text-foreground"
     >
       {label}
       {current && (
