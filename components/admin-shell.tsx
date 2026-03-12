@@ -33,6 +33,7 @@ import type { Campaign } from "@/lib/mock/mockCampaigns";
 import { mockCampaigns } from "@/lib/mock/mockCampaigns";
 import { Button } from "@/components/ui/button";
 import { Tooltip } from "@/components/ui/tooltip";
+import { ThemeToggle } from "@/components/ui/ThemeToggle";
 import {
   SheetRoot,
   SheetTrigger,
@@ -396,6 +397,7 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
   const [userPopoverOpen, setUserPopoverOpen] = useState(false);
   const userPopoverRef = useRef<HTMLDivElement>(null);
 
+  const [, setSettingsVersion] = useState(0);
   const settings = getAppSettings();
   const collapsed = sidebarCollapsed ?? settings.sidebarCollapsed;
 
@@ -407,6 +409,12 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     setSidebarCollapsedState(settings.sidebarCollapsed);
   }, [settings.sidebarCollapsed]);
+
+  useEffect(() => {
+    const onSettingsChange = () => setSettingsVersion((v) => v + 1);
+    window.addEventListener("app-settings-change", onSettingsChange);
+    return () => window.removeEventListener("app-settings-change", onSettingsChange);
+  }, []);
 
   const { data: submissions = [] } = useSubmissionsQuery(
     { status: "pending" },
@@ -690,6 +698,7 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
               </SheetBody>
             </SheetContent>
           </SheetRoot>
+          <ThemeToggle />
           <div className="hidden items-center gap-2 md:flex">
             <UserAvatar name={user.name} className="size-8" />
             <div className="text-right">

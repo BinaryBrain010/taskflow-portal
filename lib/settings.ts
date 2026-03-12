@@ -103,6 +103,9 @@ export function setAppSettings(partial: Partial<AppSettings>): void {
       : current.notifications,
   };
   setStored(APP_SETTINGS_KEY, next);
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new CustomEvent("app-settings-change"));
+  }
 }
 
 export function getPinnedCampaignIds(): string[] {

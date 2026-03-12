@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useCallback, useEffect } from "react";
 import { useTheme } from "next-themes";
 import {
   getAppSettings,
@@ -30,7 +30,7 @@ function loadGoogleFont(familyId: FontFamily): void {
 export function SettingsApply() {
   const { setTheme } = useTheme();
 
-  useEffect(() => {
+  const apply = useCallback(() => {
     const s = getAppSettings();
     setTheme(s.theme);
     document.documentElement.style.setProperty(
@@ -41,6 +41,13 @@ export function SettingsApply() {
     document.body.setAttribute("data-density", s.tableDensity);
     loadGoogleFont(s.fontFamily);
   }, [setTheme]);
+
+  useEffect(() => {
+    apply();
+    const onSettingsChange = () => apply();
+    window.addEventListener("app-settings-change", onSettingsChange);
+    return () => window.removeEventListener("app-settings-change", onSettingsChange);
+  }, [apply]);
 
   return null;
 }
