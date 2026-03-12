@@ -75,12 +75,12 @@ const ConfirmDialogContent = forwardRef<HTMLDivElement, ConfirmDialogContentProp
             <Dialog.Title className="font-display text-lg font-semibold text-foreground">
               {title}
             </Dialog.Title>
-            {(description || children) && (
+            {description && (
               <Dialog.Description className="mt-2 text-sm text-muted-foreground">
                 {description}
-                {children}
               </Dialog.Description>
             )}
+            {children && <div className="mt-2 text-sm text-muted-foreground">{children}</div>}
             <div className="mt-6 flex justify-end gap-2">
               <Button variant={cancelVariant} onClick={onCancel} disabled={loading}>
                 {cancelLabel}

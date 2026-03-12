@@ -308,3 +308,19 @@
 [data-density="comfortable"] tbody tr {
   padding: 12px 16px;
 }
+
+/* View Transitions API — circular reveal on theme toggle */
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation: none;
+  mix-blend-mode: normal;
+}
+
+/* New theme (expanding circle) on top so it reveals over the old snapshot */
+::view-transition-old(root) {
+  z-index: 1;
+}
+
+::view-transition-new(root) {
+  z-index: 999;
+}
