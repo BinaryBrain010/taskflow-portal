@@ -1,8 +1,9 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { DayPicker } from "react-day-picker";
-import { Calendar } from "lucide-react";
+import { Calendar as CalendarIcon } from "lucide-react";
+import { Calendar } from "@/components/ui/calendar";
+import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
 function formatDisplayDate(isoOrLocal: string | null): string {
@@ -55,7 +56,7 @@ export function ExpiryDatePicker({
           !value && "text-muted-foreground"
         )}
       >
-        <Calendar className="size-4 shrink-0 text-muted-foreground" />
+        <CalendarIcon className="size-4 shrink-0 text-muted-foreground" />
         <span className="min-w-0 flex-1 truncate">{display}</span>
       </button>
       {open && (
@@ -66,11 +67,11 @@ export function ExpiryDatePicker({
             onClick={() => setOpen(false)}
           />
           <div
-            className="absolute left-0 top-full z-50 mt-1 rounded-lg border border-border bg-popover p-3 shadow-lg"
+            className="absolute left-0 top-full z-50 mt-1 min-w-[min(300px,92vw)] rounded-xl border border-border bg-popover p-3 shadow-lg"
             role="dialog"
             aria-label="Pick expiry date"
           >
-            <DayPicker
+            <Calendar
               mode="single"
               selected={selectedDate}
               onSelect={(date) => {
@@ -81,38 +82,23 @@ export function ExpiryDatePicker({
               }}
               disabled={{ before: new Date() }}
               showOutsideDays
-              classNames={{
-                root: "rdp",
-                months: "flex flex-col",
-                month: "space-y-4",
-                month_caption: "flex justify-center pt-1 font-medium text-sm",
-                nav: "flex gap-1",
-                button_previous: "size-8 rounded-md border border-input bg-background hover:bg-muted",
-                button_next: "size-8 rounded-md border border-input bg-background hover:bg-muted",
-                weekdays: "flex",
-                weekday: "w-9 rounded-md py-1 text-center text-xs text-muted-foreground",
-                week: "flex w-full mt-2",
-                day: "size-9 rounded-md p-0 text-center text-sm",
-                day_button:
-                  "size-9 rounded-md hover:bg-primary/10 focus-visible:ring-2 focus-visible:ring-ring",
-                selected: "bg-primary text-primary-foreground hover:bg-primary hover:text-primary-foreground",
-                today: "font-medium",
-                outside: "text-muted-foreground opacity-50",
-                disabled: "opacity-40",
-                hidden: "invisible",
-              }}
+              captionLayout="label"
+              buttonVariant="ghost"
+              className="border-0 bg-transparent p-0 shadow-none"
             />
-            <div className="mt-2 flex justify-end border-t border-border pt-2">
-              <button
+            <div className="mt-3 flex justify-end border-t border-border pt-3">
+              <Button
                 type="button"
+                variant="outline"
+                size="sm"
+                className="h-7"
                 onClick={() => {
                   onChange(null);
                   setOpen(false);
                 }}
-                className="rounded-md px-3 py-1.5 text-sm text-muted-foreground hover:bg-muted hover:text-foreground"
               >
                 Clear
-              </button>
+              </Button>
             </div>
           </div>
         </>
