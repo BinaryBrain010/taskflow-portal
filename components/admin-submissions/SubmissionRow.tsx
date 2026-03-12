@@ -7,8 +7,8 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
 export const STATUS_STYLES: Record<Submission["status"], string> = {
-  pending: "bg-amber-500/15 text-amber-700 dark:text-amber-400",
-  approved: "bg-green-500/15 text-green-700 dark:text-green-400",
+  pending: "bg-amber-500/15 text-amber-700 dark:bg-amber-900/50 dark:text-amber-200",
+  approved: "bg-green-500/15 text-green-700 dark:bg-green-900/50 dark:text-green-200",
   rejected: "bg-destructive/15 text-destructive",
 };
 
@@ -148,7 +148,7 @@ export function SubmissionRow({
             type="button"
             size="icon"
             variant="ghost"
-            className="size-8 rounded-full text-green-600 hover:bg-green-500/15 hover:text-green-700"
+            className="size-8 rounded-full text-green-600 hover:bg-green-500/15 hover:text-green-700 dark:text-green-400 dark:hover:bg-green-500/20 dark:hover:text-green-300"
             onClick={() => onApprove?.(submission)}
             disabled={isReviewPending}
             aria-label="Approve"
@@ -172,18 +172,18 @@ export function SubmissionRow({
   );
 }
 
-/** Type badge for task type (for group header or table) */
+/** Type badge for task type (for group header or table). Stays single-line and compact. */
 export function TaskTypeBadge({ type }: { type: string }) {
   const styles: Record<string, string> = {
-    survey: "bg-indigo-500/15 text-indigo-700 dark:text-indigo-400",
-    content_review: "bg-violet-500/15 text-violet-700 dark:text-violet-400",
-    data_labeling: "bg-orange-500/15 text-orange-700 dark:text-orange-400",
-    transcription: "bg-cyan-500/15 text-cyan-700 dark:text-cyan-400",
+    survey: "bg-indigo-500/15 text-indigo-700 dark:bg-indigo-900/50 dark:text-indigo-200",
+    content_review: "bg-violet-500/15 text-violet-700 dark:bg-violet-900/50 dark:text-violet-200",
+    data_labeling: "bg-orange-500/15 text-orange-700 dark:bg-orange-900/50 dark:text-orange-200",
+    transcription: "bg-cyan-500/15 text-cyan-700 dark:bg-cyan-900/50 dark:text-cyan-200",
   };
   return (
     <span
       className={cn(
-        "inline-flex rounded-full border border-current/20 px-2.5 py-0.5 text-xs font-medium",
+        "inline-flex shrink-0 items-center rounded-full border border-current/20 px-2 py-0.5 text-[11px] font-medium whitespace-nowrap",
         styles[type] ?? "bg-muted text-muted-foreground"
       )}
     >

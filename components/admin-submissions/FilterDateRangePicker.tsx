@@ -2,7 +2,6 @@
 
 import * as React from "react";
 import { CalendarIcon } from "lucide-react";
-import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
 import { cn } from "@/lib/utils";
 
@@ -23,13 +22,17 @@ export interface FilterDateRangePickerProps {
   dateTo: string;
   onChange: (params: { dateFrom: string; dateTo: string }) => void;
   id?: string;
-  placeholder?: string;
+  fromPlaceholder?: string;
+  toPlaceholder?: string;
   className?: string;
   triggerClassName?: string;
 }
 
+const triggerBase =
+  "flex h-9 min-w-0 flex-1 items-center gap-2 rounded-lg border border-input bg-background px-3 py-2 text-left text-sm transition-colors hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2";
+
 /**
- * Filter date range picker: one calendar in range mode for From/To.
+ * Filter date range picker: separate From and To inputs, one calendar in range mode.
  * Shows proper range styling (from circle, to circle, middle fill).
  */
 export function FilterDateRangePicker({
@@ -37,7 +40,8 @@ export function FilterDateRangePicker({
   dateTo,
   onChange,
   id,
-  placeholder = "Pick range",
+  fromPlaceholder = "From",
+  toPlaceholder = "To",
   className,
   triggerClassName,
 }: FilterDateRangePickerProps) {
@@ -64,31 +68,48 @@ export function FilterDateRangePicker({
         ? { from: fromDate, to: undefined }
         : undefined;
 
-  const display =
-    fromDate && toDate
-      ? `${fromDate.toLocaleDateString("en-US", { month: "short", day: "numeric" })} – ${toDate.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}`
-      : fromDate
-        ? `${fromDate.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })} – …`
-        : placeholder;
+  const fromDisplay = fromDate
+    ? fromDate.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
+    : fromPlaceholder;
+  const toDisplay = toDate
+    ? toDate.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
+    : toPlaceholder;
 
   return (
-    <div ref={containerRef} className={cn("relative", className)}>
+    <div ref={containerRef} className={cn("relative flex items-center gap-2", className)}>
       <button
         type="button"
         id={id}
         aria-expanded={open}
         aria-haspopup="dialog"
-        aria-label={placeholder}
+        aria-label={`From date: ${fromDisplay}`}
         onClick={() => setOpen((o) => !o)}
         className={cn(
-          "flex h-9 w-full min-w-[140px] items-center gap-2 rounded-lg border border-input bg-background px-3 py-2 text-left text-sm transition-colors",
-          "hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
-          !fromDate && !toDate && "text-muted-foreground",
+          triggerBase,
+          !fromDate && "text-muted-foreground",
           triggerClassName
         )}
       >
         <CalendarIcon className="size-4 shrink-0 text-muted-foreground" aria-hidden />
-        <span className="min-w-0 flex-1 truncate">{display}</span>
+        <span className="min-w-0 flex-1 truncate">{fromDisplay}</span>
+      </button>
+      <span className="text-muted-foreground shrink-0" aria-hidden>
+        –
+      </span>
+      <button
+        type="button"
+        aria-expanded={open}
+        aria-haspopup="dialog"
+        aria-label={`To date: ${toDisplay}`}
+        onClick={() => setOpen((o) => !o)}
+        className={cn(
+          triggerBase,
+          !toDate && "text-muted-foreground",
+          triggerClassName
+        )}
+      >
+        <CalendarIcon className="size-4 shrink-0 text-muted-foreground" aria-hidden />
+        <span className="min-w-0 flex-1 truncate">{toDisplay}</span>
       </button>
 
       {open && (
@@ -116,18 +137,16 @@ export function FilterDateRangePicker({
             className="border-0 bg-transparent p-0 shadow-none"
           />
           <div className="mt-3 flex justify-end border-t border-border pt-3">
-            <Button
+            <button
               type="button"
-              variant="outline"
-              size="sm"
-              className="h-7"
+              className="text-sm text-muted-foreground hover:text-foreground underline-offset-2 hover:underline"
               onClick={() => {
                 onChange({ dateFrom: "", dateTo: "" });
                 setOpen(false);
               }}
             >
               Clear
-            </Button>
+            </button>
           </div>
         </div>
       )}

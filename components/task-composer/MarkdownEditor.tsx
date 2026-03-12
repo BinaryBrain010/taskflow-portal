@@ -121,7 +121,7 @@ export function MarkdownEditor({
         disabled={disabled}
         rows={6}
         className={cn(
-          "min-h-[140px] w-full resize-y border-0 bg-transparent px-3 py-2 text-sm outline-none",
+          "min-h-[140px] w-full resize-y border-0 bg-transparent px-3 py-2 text-sm outline-none dark:bg-muted",
           "placeholder:text-muted-foreground",
           "disabled:cursor-not-allowed disabled:opacity-50"
         )}

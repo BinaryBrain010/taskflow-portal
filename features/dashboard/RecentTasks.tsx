@@ -13,8 +13,8 @@ const TYPE_LABELS: Record<TaskType, string> = {
 
 const STATUS_STYLES: Record<TaskStatus, string> = {
   draft: "bg-muted text-muted-foreground",
-  active: "bg-green-500/15 text-green-700 dark:text-green-400",
-  paused: "bg-amber-500/15 text-amber-700 dark:text-amber-400",
+  active: "bg-green-500/15 text-green-700 dark:bg-green-900/50 dark:text-green-200",
+  paused: "bg-amber-500/15 text-amber-700 dark:bg-amber-900/50 dark:text-amber-200",
   closed: "bg-muted text-muted-foreground",
 };
 
@@ -30,7 +30,7 @@ interface RecentTasksProps {
 export function RecentTasks({ tasks, isLoading }: RecentTasksProps) {
   if (isLoading) {
     return (
-      <div className="rounded-lg border border-border bg-card p-4 shadow-sm">
+      <div className="rounded-xl border border-border bg-card p-5 shadow-sm">
         <h2 className="font-display text-sm font-semibold text-foreground">Recent tasks</h2>
         <div className="mt-3 space-y-2">
           {[1, 2, 3, 4, 5].map((i) => (
@@ -48,7 +48,7 @@ export function RecentTasks({ tasks, isLoading }: RecentTasksProps) {
   const empty = list.length === 0;
 
   return (
-    <div className="rounded-lg border border-border bg-card p-4 shadow-sm">
+    <div className="rounded-xl border border-border bg-card p-5 shadow-sm">
       <div className="flex items-center justify-between">
         <h2 className="font-display text-sm font-semibold text-foreground">Recent tasks</h2>
         <Link

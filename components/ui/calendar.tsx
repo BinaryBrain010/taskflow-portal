@@ -43,22 +43,21 @@ function Calendar({
       buttonVariants({ variant: buttonVariant, size: "icon" }),
       "size-7 shrink-0 rounded-full p-0 hover:bg-muted transition-colors duration-100"
     ),
-    weekdays: "grid grid-cols-7 gap-0 border-b border-border pb-2 mb-1",
-    weekday: "flex h-8 items-center justify-center text-xs font-medium text-muted-foreground",
-    week: "grid grid-cols-7 gap-0",
-    day: "relative flex size-9 items-center justify-center p-0",
+    weekdays: "grid grid-cols-7 gap-0 border-none pb-2 mb-1",
+    weekday: "flex h-9 w-9 items-center justify-center text-sm font-medium text-muted-foreground border-none",
+    week: "grid grid-cols-7 gap-0 border-none",
+    day: "rdp-day relative flex size-9 w-9 h-9 items-center justify-center p-0 border-none text-center text-sm",
     day_button: cn(
+      "rdp-day_button",
       buttonVariants({ variant: buttonVariant, size: "icon" }),
-      "size-8 rounded-full font-normal transition-colors duration-100 cursor-pointer hover:bg-muted hover:rounded-full aria-selected:opacity-100"
+      "size-8 w-8 h-8 rounded-full font-normal transition-colors duration-100 cursor-pointer",
+      "flex items-center justify-center mx-auto"
     ),
-    selected: "!bg-teal-600 !text-white rounded-full hover:!bg-teal-600 focus:!bg-teal-600",
-    today: "", // today indicator is a dot below the date, styled in DayButton
+    // Omit selected, range_start, range_end, range_middle so DayPicker defaults (rdp-selected, etc.) apply; globals.css overrides them
+    today: "",
     outside: "text-muted-foreground/50",
     disabled: "text-muted-foreground/50 opacity-50 cursor-not-allowed",
     hidden: "invisible",
-    range_middle: "bg-teal-50 text-teal-900 rounded-none",
-    range_start: "rounded-l-full",
-    range_end: "rounded-r-full",
     ...classNamesProp,
   };
 
@@ -117,7 +116,6 @@ function Calendar({
     const isRangeEnd = modifiers.range_start || modifiers.range_end;
     const isSelected = modifiers.selected || isRangeEnd;
     const isRangeMiddle = modifiers.range_middle && !isRangeEnd;
-    // When only from is selected (range_start, no range_end), pulse to indicate waiting for "to"
     const isRangeStartOnly = modifiers.range_start && !modifiers.range_end && !modifiers.range_middle;
     return (
       <Button
@@ -126,14 +124,11 @@ function Calendar({
         size="icon"
         type="button"
         className={cn(
-          "size-8 font-normal transition-colors duration-100 cursor-pointer",
-          "rounded-full",
-          !isSelected && !isRangeMiddle && "hover:bg-muted hover:rounded-full",
-          isSelected && "!bg-teal-600 !text-white hover:!bg-teal-600 focus:!bg-teal-600 w-8 h-8",
+          "size-8 w-8 h-8 rounded-full font-normal transition-colors duration-100 cursor-pointer",
+          "flex items-center justify-center mx-auto",
           modifiers.range_start && "rounded-l-full",
           modifiers.range_end && "rounded-r-full",
           isRangeStartOnly && "animate-pulse",
-          isRangeMiddle && "!bg-teal-50 !text-teal-900 rounded-none hover:!bg-teal-50",
           modifiers.outside && "text-muted-foreground/50",
           dayClassName
         )}
@@ -142,15 +137,7 @@ function Calendar({
         data-outside={modifiers.outside ? true : undefined}
         {...rest}
       >
-        <span className="flex flex-col items-center justify-center gap-0.5">
-          <span>{children}</span>
-          {modifiers.today && (
-            <span
-              className="size-1 rounded-full bg-teal-500 shrink-0"
-              aria-hidden
-            />
-          )}
-        </span>
+        {children}
       </Button>
     );
   };

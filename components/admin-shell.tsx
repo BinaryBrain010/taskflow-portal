@@ -5,6 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { LayoutDashboard, ListTodo, Send, Users, PanelLeftClose, PanelLeft } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
+import { ThemeToggle } from "@/components/ui/ThemeToggle";
 import { Button, buttonVariants } from "@/components/ui/button";
 import {
   SheetRoot,
@@ -201,6 +202,7 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
           </SheetRoot>
           <div className="flex flex-1 items-center justify-end gap-2 md:justify-end">
             <div className="hidden items-center gap-2 md:flex">
+              <ThemeToggle />
               <UserAvatar name={user.name} className="size-8" />
               <div className="text-right">
                 <p className="text-sm font-medium text-foreground">{user.name}</p>

@@ -8,12 +8,16 @@ import Link from "next/link";
 import type { Submission, SubmissionStatus } from "@/lib/types";
 import { useSubmissionsQuery, useReviewSubmission } from "@/hooks/useSubmissions";
 import { useTasksQuery } from "@/hooks/useTasks";
+import { useUsersQuery } from "@/hooks/useUsers";
 import { useIsMobile } from "@/hooks/useIsMobile";
 import { STATUS_STYLES, formatTime, TaskTypeBadge } from "@/components/admin-submissions/SubmissionRow";
 import { SubmissionDetailSidebar } from "@/components/admin-submissions/SubmissionDetailSidebar";
 import { SubmissionsEmptyState } from "@/components/admin-submissions/SubmissionsEmptyState";
 import { TaskSearchSelect } from "@/components/admin-submissions/TaskSearchSelect";
+import { WorkerSearchSelect } from "@/components/admin-submissions/WorkerSearchSelect";
 import { FilterDateRangePicker } from "@/components/admin-submissions/FilterDateRangePicker";
+import { SubmissionsSkeleton } from "@/components/admin-submissions/SubmissionsSkeleton";
+import { Input } from "@/components/ui/input";
 import { SelectDropdown } from "@/components/ui/select-dropdown";
 import {
   SheetRoot,
@@ -24,7 +28,11 @@ import {
 } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
 import { Tooltip } from "@/components/ui/tooltip";
-import { mockUsers } from "@/lib/mock/mockUsers";
+import {
+  ConfirmDialogRoot,
+  ConfirmDialogContent,
+  RejectDialogContent,
+} from "@/components/ui/confirm-dialog";
 import { useQueryClient } from "@tanstack/react-query";
 import { submissionKeys } from "@/hooks/useSubmissions";
 import type { SubmissionFilters } from "@/lib/types";
@@ -49,7 +57,7 @@ const SORT_OPTIONS = [
 
 const parsers = {
   status: parseAsStringLiteral(["all", "pending", "approved", "rejected"] as const).withDefault("all"),
-  view: parseAsStringLiteral(["grouped", "flat"] as const).withDefault("grouped"),
+  view: parseAsStringLiteral(["grouped", "flat"] as const).withDefault("flat"),
   taskId: parseAsString.withDefault(""),
   workerId: parseAsString.withDefault(""),
   dateFrom: parseAsString.withDefault(""),
@@ -59,15 +67,10 @@ const parsers = {
 
 const ROW_HEIGHT = 40;
 const OVERSCAN = 5;
-const workerUsers = mockUsers.filter((u) => u.role === "worker");
-const WORKER_OPTIONS = [
-  { value: "", label: "All workers" },
-  ...workerUsers.map((u) => ({ value: u.id, label: u.name })),
-];
 
 const TAB_BADGE_STYLES: Record<string, string> = {
-  pending: "bg-amber-500/15 text-amber-700 dark:text-amber-400",
-  approved: "bg-green-500/15 text-green-700 dark:text-green-400",
+  pending: "bg-amber-500/15 text-amber-700 dark:bg-amber-900/50 dark:text-amber-200",
+  approved: "bg-green-500/15 text-green-700 dark:bg-green-900/50 dark:text-green-200",
   rejected: "bg-destructive/15 text-destructive",
 };
 
@@ -107,6 +110,11 @@ export default function AdminSubmissionsPage() {
   // Track expanded task ids (empty = all collapsed by default)
   const [expandedTasks, setExpandedTasks] = useState<Set<string>>(new Set());
   const [searchQuery, setSearchQuery] = useState("");
+  const [approveDialogOpen, setApproveDialogOpen] = useState(false);
+  const [approveTarget, setApproveTarget] = useState<Submission | null>(null);
+  const [rejectDialogOpen, setRejectDialogOpen] = useState(false);
+  const [rejectTarget, setRejectTarget] = useState<Submission | null>(null);
+  const [rejectNote, setRejectNote] = useState("");
   const isMobile = useIsMobile();
   const scrollRef = useRef<HTMLDivElement>(null);
   const queryClient = useQueryClient();
@@ -123,23 +131,28 @@ export default function AdminSubmissionsPage() {
     [params.status, params.taskId, params.workerId, params.dateFrom, params.dateTo, params.view]
   );
 
-  const { data: submissions = [], isLoading, isFetching, error } = useSubmissionsQuery(filters);
-  const { data: tasks = [] } = useTasksQuery();
+  /** Same filters but no status filter — used only for tab counts so all statuses show correct numbers */
+  const filtersForCounts = useMemo<SubmissionFilters>(
+    () => ({
+      ...filters,
+      status: undefined,
+    }),
+    [filters]
+  );
 
-  const statusCounts = useMemo(() => {
-    if (params.status !== "all") {
-      return {
-        pending: params.status === "pending" ? submissions.length : undefined,
-        approved: params.status === "approved" ? submissions.length : undefined,
-        rejected: params.status === "rejected" ? submissions.length : undefined,
-      };
-    }
-    return {
-      pending: submissions.filter((s) => s.status === "pending").length,
-      approved: submissions.filter((s) => s.status === "approved").length,
-      rejected: submissions.filter((s) => s.status === "rejected").length,
-    };
-  }, [submissions, params.status]);
+  const { data: submissions = [], isLoading, isFetching, error } = useSubmissionsQuery(filters);
+  const { data: submissionsForCounts = [] } = useSubmissionsQuery(filtersForCounts);
+  const { data: tasks = [] } = useTasksQuery();
+  const { data: workers = [], isFetching: workersFetching } = useUsersQuery({ role: "worker" });
+
+  const statusCounts = useMemo(
+    () => ({
+      pending: submissionsForCounts.filter((s) => s.status === "pending").length,
+      approved: submissionsForCounts.filter((s) => s.status === "approved").length,
+      rejected: submissionsForCounts.filter((s) => s.status === "rejected").length,
+    }),
+    [submissionsForCounts]
+  );
 
   const sorted = useMemo(() => {
     const copy = [...submissions];
@@ -185,10 +198,12 @@ export default function AdminSubmissionsPage() {
     params.taskId !== "" ||
     params.workerId !== "" ||
     params.dateFrom !== "" ||
-    params.dateTo !== "";
+    params.dateTo !== "" ||
+    searchQuery.trim() !== "";
 
   const clearFilters = () => {
     setParams({ taskId: "", workerId: "", dateFrom: "", dateTo: "" });
+    setSearchQuery("");
   };
 
   const expandAll = () => setExpandedTasks(new Set(grouped.map((g) => g.taskId)));
@@ -198,7 +213,8 @@ export default function AdminSubmissionsPage() {
     (submission: Submission) => {
       setSelected((prev) => (prev?.id === submission.id ? submission : prev));
       setToast({
-        message: `Submission ${submission.status === "approved" ? "approved" : "rejected"}.`,
+        message:
+          submission.status === "approved" ? "Submission approved" : "Submission rejected",
         type: "success",
       });
     },
@@ -246,15 +262,47 @@ export default function AdminSubmissionsPage() {
   };
 
   const handleQuickApprove = (s: Submission) => {
-    reviewMutation.mutate({ id: s.id, action: "approve" });
+    setApproveTarget(s);
+    setApproveDialogOpen(true);
   };
   const handleQuickReject = (s: Submission) => {
-    reviewMutation.mutate({ id: s.id, action: "reject", note: "Rejected from list." });
+    setRejectTarget(s);
+    setRejectNote("");
+    setRejectDialogOpen(true);
   };
+
+  const handleApproveConfirm = useCallback(() => {
+    if (!approveTarget) return;
+    reviewMutation.mutate(
+      { id: approveTarget.id, action: "approve" },
+      {
+        onSuccess: () => {
+          setApproveDialogOpen(false);
+          setApproveTarget(null);
+        },
+      }
+    );
+  }, [approveTarget, reviewMutation]);
+
+  const handleRejectConfirm = useCallback(
+    (note: string) => {
+      if (!rejectTarget) return;
+      reviewMutation.mutate(
+        { id: rejectTarget.id, action: "reject", note: note.trim() || undefined },
+        {
+          onSuccess: () => {
+            setRejectDialogOpen(false);
+            setRejectTarget(null);
+            setRejectNote("");
+          },
+        }
+      );
+    },
+    [rejectTarget, reviewMutation]
+  );
 
   const detailOpen = !!selected;
 
-  const [searchFocused, setSearchFocused] = useState(false);
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-3 px-2">
@@ -301,7 +349,7 @@ export default function AdminSubmissionsPage() {
       </div>
 
       {/* Single filter bar: Expand/Collapse | View | Sort | Task | Worker | From | To | Search | Clear */}
-      <div className="flex flex-wrap items-center gap-2 border-b border-border py-2">
+      <div className="flex flex-wrap items-center gap-2 border-b border-border bg-background py-2">
         {params.view === "grouped" && grouped.length > 0 && (
           <>
             <button
@@ -323,26 +371,6 @@ export default function AdminSubmissionsPage() {
           </>
         )}
         <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
-          View
-        </span>
-        <div className="flex rounded border border-border bg-muted/30 p-0.5">
-          {VIEW_MODES.map(({ value, label }) => (
-            <button
-              key={value}
-              type="button"
-              onClick={() => setParams({ view: value })}
-              className={cn(
-                "rounded px-2 py-1 text-xs font-medium transition-colors",
-                params.view === value
-                  ? "bg-background text-foreground shadow-sm"
-                  : "text-muted-foreground hover:text-foreground"
-              )}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
-        <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
           Sort
         </span>
         <SelectDropdown.Root
@@ -359,76 +387,76 @@ export default function AdminSubmissionsPage() {
           onChange={(v) => setParams({ taskId: v })}
           tasks={tasks}
           placeholder="All tasks"
+          isFetching={false}
           className="[&_button]:h-8 [&_button]:min-w-[100px] [&_button]:rounded [&_button]:px-2 [&_button]:text-xs"
         />
-        <SelectDropdown.Root
+        <WorkerSearchSelect
           value={params.workerId}
-          onValueChange={(v) => setParams({ workerId: v })}
-          options={WORKER_OPTIONS}
+          onChange={(v) => setParams({ workerId: v })}
+          workers={workers}
           placeholder="All workers"
-        >
-          <SelectDropdown.Trigger className="h-8 min-w-[100px] rounded border border-input px-2 text-xs" />
-          <SelectDropdown.Content />
-        </SelectDropdown.Root>
+          isFetching={workersFetching}
+          className="[&_button]:h-8 [&_button]:min-w-[100px] [&_button]:rounded [&_button]:px-2 [&_button]:text-xs"
+        />
         <div className="[&_button]:h-8 [&_button]:min-w-[140px] [&_button]:rounded [&_button]:px-2 [&_button]:text-xs">
           <FilterDateRangePicker
             dateFrom={params.dateFrom}
             dateTo={params.dateTo}
             onChange={({ dateFrom, dateTo }) => setParams({ dateFrom, dateTo })}
-            placeholder="Date range"
+            fromPlaceholder="From"
+            toPlaceholder="To"
           />
         </div>
-        <div
-          className={cn(
-            "relative flex items-center transition-[width]",
-            searchFocused || searchQuery ? "w-36" : "w-8"
-          )}
-        >
-          <Search className="pointer-events-none absolute left-2 size-3.5 text-muted-foreground" />
-          <input
-            type="text"
-            role="search"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            onFocus={() => setSearchFocused(true)}
-            onBlur={() => setSearchFocused(false)}
-            placeholder="Search…"
-            aria-label="Search submissions by worker or task"
-            className={cn(
-              "h-8 w-full rounded border border-input bg-background pl-7 pr-6 text-xs placeholder:text-muted-foreground",
-              "focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-            )}
-          />
-          {searchQuery && (
-            <button
-              type="button"
-              onClick={(e) => {
-                e.preventDefault();
-                setSearchQuery("");
-              }}
-              aria-label="Clear search"
-              className="absolute right-1.5 rounded p-0.5 text-muted-foreground hover:bg-muted hover:text-foreground"
-            >
-              <X className="size-3" />
-            </button>
-          )}
-        </div>
-        <span
-          className={cn(
-            "inline-block transition-opacity duration-200",
-            hasActiveFilters ? "opacity-100" : "h-0 w-0 overflow-hidden opacity-0 pointer-events-none"
-          )}
-        >
+        <div className="flex items-center gap-2">
+          <div className="relative w-40 transition-[width] duration-200 focus-within:w-56">
+            <Search
+              className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground"
+              aria-hidden
+            />
+            <Input
+              type="search"
+              role="search"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search..."
+              aria-label="Search submissions by worker or task"
+              className="h-9 pl-8 text-sm"
+            />
+          </div>
           {hasActiveFilters && (
             <button
               type="button"
               onClick={clearFilters}
-              className="text-xs text-muted-foreground hover:text-foreground"
+              className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
+              aria-label="Clear all filters"
             >
+              <X className="size-3.5 shrink-0" />
               Clear filters
             </button>
           )}
-        </span>
+        </div>
+        <div className="ml-auto flex items-center gap-1.5">
+          <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+            View
+          </span>
+          <div className="flex rounded border border-border bg-muted/30 p-0.5">
+            {VIEW_MODES.map(({ value, label }) => (
+              <button
+                key={value}
+                type="button"
+                onClick={() => setParams({ view: value })}
+                className={cn(
+                  "rounded px-2 py-1 text-xs font-medium transition-colors",
+                  params.view === value
+                    ? "bg-background text-foreground shadow-sm"
+                    : "text-muted-foreground hover:text-foreground"
+                )}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        </div>
       </div>
 
       {toast && (
@@ -437,13 +465,62 @@ export default function AdminSubmissionsPage() {
           className={cn(
             "fixed bottom-4 left-1/2 z-50 -translate-x-1/2 rounded-lg px-4 py-2 text-sm font-medium shadow-lg",
             toast.type === "success"
-              ? "bg-green-600 text-white"
+              ? "bg-primary text-primary-foreground"
               : "bg-destructive text-destructive-foreground"
           )}
         >
           {toast.message}
         </div>
       )}
+
+      <ConfirmDialogRoot open={approveDialogOpen} onOpenChange={setApproveDialogOpen}>
+        <ConfirmDialogContent
+          title="Approve submission?"
+          description={
+            approveTarget
+              ? `You are approving ${approveTarget.worker?.name ?? "this worker"}'s submission for '${approveTarget.task?.title ?? "this task"}'. The worker will be notified.`
+              : ""
+          }
+          confirmLabel="Approve"
+          variant="default"
+          onConfirm={handleApproveConfirm}
+          onCancel={() => {
+            setApproveDialogOpen(false);
+            setApproveTarget(null);
+          }}
+          loading={reviewMutation.isPending}
+        />
+      </ConfirmDialogRoot>
+
+      <ConfirmDialogRoot
+        open={rejectDialogOpen}
+        onOpenChange={(open) => {
+          setRejectDialogOpen(open);
+          if (!open) {
+            setRejectTarget(null);
+            setRejectNote("");
+          }
+        }}
+      >
+        <RejectDialogContent
+          title="Reject submission?"
+          description={
+            rejectTarget
+              ? `You are rejecting ${rejectTarget.worker?.name ?? "this worker"}'s submission for '${rejectTarget.task?.title ?? "this task"}'.`
+              : ""
+          }
+          confirmLabel="Reject"
+          rejectNote={rejectNote}
+          onRejectNoteChange={setRejectNote}
+          onConfirm={handleRejectConfirm}
+          onCancel={() => {
+            setRejectDialogOpen(false);
+            setRejectTarget(null);
+            setRejectNote("");
+          }}
+          loading={reviewMutation.isPending}
+        />
+      </ConfirmDialogRoot>
 
       {error && (
         <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-4">
@@ -455,19 +532,17 @@ export default function AdminSubmissionsPage() {
         <div className="relative flex min-h-0 flex-1 flex-col gap-0">
           {isFetching && (
             <div
-              className="absolute left-0 right-0 top-0 z-20 h-0.5 overflow-hidden rounded-full bg-teal-200"
+              className="absolute left-0 right-0 top-0 z-20 h-0.5 overflow-hidden rounded-full bg-muted"
               aria-hidden
             >
               <div
-                className="h-full w-1/3 rounded-full bg-teal-500"
+                className="h-full w-1/3 rounded-full bg-primary"
                 style={{ animation: "loading-bar 1.2s ease-in-out infinite" }}
               />
             </div>
           )}
           {isLoading && submissions.length === 0 ? (
-            <div className="flex flex-1 items-center justify-center py-12">
-              <p className="text-sm text-muted-foreground">Loading submissions…</p>
-            </div>
+            <SubmissionsSkeleton />
           ) : (
         <div key={params.status} className="flex min-h-0 flex-1 gap-0 transition-opacity duration-200">
           <div className="min-w-0 flex-1">
@@ -505,10 +580,10 @@ export default function AdminSubmissionsPage() {
                           {taskType != null && (
                             <span className={cn(
                               "shrink-0 rounded border border-current/20 px-2 py-0.5 text-[11px] font-medium whitespace-nowrap",
-                              taskType === "survey" && "bg-indigo-500/10 text-indigo-700 dark:text-indigo-400",
-                              taskType === "content_review" && "bg-violet-500/10 text-violet-700 dark:text-violet-400",
-                              taskType === "data_labeling" && "bg-orange-500/10 text-orange-700 dark:text-orange-400",
-                              taskType === "transcription" && "bg-cyan-500/10 text-cyan-700 dark:text-cyan-400"
+                              taskType === "survey" && "bg-indigo-500/10 text-indigo-700 dark:bg-indigo-900/50 dark:text-indigo-200",
+                              taskType === "content_review" && "bg-violet-500/10 text-violet-700 dark:bg-violet-900/50 dark:text-violet-200",
+                              taskType === "data_labeling" && "bg-orange-500/10 text-orange-700 dark:bg-orange-900/50 dark:text-orange-200",
+                              taskType === "transcription" && "bg-cyan-500/10 text-cyan-700 dark:bg-cyan-900/50 dark:text-cyan-200"
                             )}>
                               {taskType === "survey" && "Survey"}
                               {taskType === "content_review" && "Content Review"}
@@ -563,7 +638,7 @@ export default function AdminSubmissionsPage() {
                                           type="button"
                                           size="icon"
                                           variant="ghost"
-                                          className="size-7 rounded-full text-green-600 hover:bg-green-500/15"
+                                          className="size-7 rounded-full text-green-600 hover:bg-green-500/15 dark:text-green-400 dark:hover:bg-green-500/20"
                                           onClick={() => handleQuickApprove(s)}
                                           disabled={reviewMutation.isPending}
                                           aria-label="Approve"
@@ -606,7 +681,7 @@ export default function AdminSubmissionsPage() {
                 ) : (
                   <>
                     {/* Table header */}
-                    <div className="sticky top-0 z-10 grid grid-cols-[1fr_1fr_7rem_80px_80px_48px_64px] gap-2 border-b border-border bg-card px-3 py-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                    <div className="sticky top-0 z-10 grid grid-cols-[1fr_1fr_7rem_80px_80px_48px_64px] gap-2 border-b border-border bg-muted px-3 py-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
                       <span>Worker</span>
                       <span>Task</span>
                       <span>Type</span>
@@ -780,7 +855,7 @@ function VirtualizedFlatList({
                     type="button"
                     size="icon"
                     variant="ghost"
-                    className="size-8 rounded-full text-green-600 hover:bg-green-500/15"
+                    className="size-8 rounded-full text-green-600 hover:bg-green-500/15 dark:text-green-400 dark:hover:bg-green-500/20"
                     onClick={() => onApprove(s)}
                     disabled={isReviewPending}
                     aria-label="Approve"

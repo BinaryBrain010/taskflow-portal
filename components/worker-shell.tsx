@@ -5,6 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { Menu } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
+import { ThemeToggle } from "@/components/ui/ThemeToggle";
 import { Button, buttonVariants } from "@/components/ui/button";
 import {
   SheetRoot,
@@ -164,6 +165,7 @@ export function WorkerShell({
         </nav>
 
         <div className="ml-auto flex items-center gap-2">
+          <ThemeToggle />
           <UserAvatar name={user.name} className="size-8" />
           <Button
             variant="ghost"

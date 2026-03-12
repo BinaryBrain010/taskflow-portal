@@ -87,38 +87,39 @@
   --sidebar-ring: oklch(0.45 0.11 195);
 }
 
+/* Dark mode: semantic variables mapped for contrast and readability */
 .dark {
-  --background: oklch(0.16 0.02 260);
-  --foreground: oklch(0.95 0.01 85);
-  --card: oklch(0.21 0.02 260);
-  --card-foreground: oklch(0.95 0.01 85);
-  --popover: oklch(0.21 0.02 260);
-  --popover-foreground: oklch(0.95 0.01 85);
-  --primary: oklch(0.7 0.12 195);
-  --primary-foreground: oklch(0.16 0.02 260);
-  --secondary: oklch(0.28 0.02 260);
-  --secondary-foreground: oklch(0.95 0.01 85);
-  --muted: oklch(0.26 0.02 260);
-  --muted-foreground: oklch(0.65 0.02 260);
+  --background: #0f0f0f;
+  --foreground: #fafafa;
+  --card: #1a1a1a;
+  --card-foreground: #fafafa;
+  --popover: #1a1a1a;
+  --popover-foreground: #fafafa;
+  --primary: #2dd4bf; /* teal-400 for dark */
+  --primary-foreground: #0a0a0a;
+  --secondary: #1e1e1e;
+  --secondary-foreground: #fafafa;
+  --muted: #1e1e1e;
+  --muted-foreground: #94a3b8;
   --accent: oklch(0.35 0.08 75);
-  --accent-foreground: oklch(0.95 0.02 85);
+  --accent-foreground: #fafafa;
   --destructive: oklch(0.6 0.2 25);
-  --border: oklch(0.32 0.02 260);
-  --input: oklch(0.32 0.02 260);
-  --ring: oklch(0.7 0.12 195);
+  --border: #2a2a2a;
+  --input: #2a2a2a;
+  --ring: #2dd4bf; /* teal consistent with primary */
   --chart-1: oklch(0.7 0.12 195);
   --chart-2: oklch(0.75 0.12 75);
   --chart-3: oklch(0.65 0.1 280);
   --chart-4: oklch(0.7 0.15 145);
   --chart-5: oklch(0.65 0.12 25);
-  --sidebar: oklch(0.19 0.02 260);
-  --sidebar-foreground: oklch(0.95 0.01 85);
-  --sidebar-primary: oklch(0.7 0.12 195);
-  --sidebar-primary-foreground: oklch(0.16 0.02 260);
+  --sidebar: #111f1e; /* very dark teal */
+  --sidebar-foreground: #e2e8f0;
+  --sidebar-primary: #2dd4bf;
+  --sidebar-primary-foreground: #0a0a0a;
   --sidebar-accent: oklch(0.28 0.03 260);
-  --sidebar-accent-foreground: oklch(0.95 0.01 85);
-  --sidebar-border: oklch(0.32 0.02 260);
-  --sidebar-ring: oklch(0.7 0.12 195);
+  --sidebar-accent-foreground: #fafafa;
+  --sidebar-border: #2a2a2a;
+  --sidebar-ring: #2dd4bf;
 }
 
 @layer base {
@@ -136,4 +137,164 @@
 @keyframes loading-bar {
   0% { transform: translateX(-100%); }
   100% { transform: translateX(400%); }
+}
+
+/* ===== React DayPicker (rdp) — global overrides: rounded square selection, no row bleed ===== */
+.rdp-day,
+.rdp-day_button,
+.rdp-selected,
+.rdp-range_start,
+.rdp-range_end,
+.rdp-range_middle {
+  transition: none !important;
+  animation: none !important;
+}
+
+.rdp-day {
+  padding: 0 !important;
+  width: 36px !important;
+  height: 36px !important;
+  position: relative !important;
+  vertical-align: middle !important;
+  text-align: center !important;
+}
+
+.rdp-day_button {
+  width: 32px !important;
+  height: 32px !important;
+  min-width: 32px !important;
+  max-width: 32px !important;
+  border-radius: 6px !important;
+  background: transparent !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  font-size: 0.875rem !important;
+  margin: 0 auto !important;
+  border: 2px solid transparent !important;
+}
+
+.rdp-day:not(.rdp-selected):not(.rdp-range_start):not(.rdp-range_end) .rdp-day_button:hover:not([disabled]) {
+  background-color: var(--muted) !important;
+  border-radius: 6px !important;
+}
+
+/* Single selected / range start / range end — use CSS variable for dark mode */
+.rdp-selected .rdp-day_button,
+.rdp-range_start .rdp-day_button,
+.rdp-range_end .rdp-day_button {
+  width: 32px !important;
+  height: 32px !important;
+  min-width: 32px !important;
+  max-width: 32px !important;
+  border-radius: 6px !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  background-color: var(--primary) !important;
+  color: var(--primary-foreground) !important;
+}
+
+/* Range middle — tint on cell; dark mode uses teal-900/40 */
+.rdp-range_middle {
+  background-color: #ccfbf1 !important; /* teal-100 light */
+  border-radius: 0 !important;
+}
+
+.dark .rdp-range_middle {
+  background-color: rgb(19 78 74 / 0.4) !important; /* teal-900/40 */
+}
+
+.rdp-range_middle .rdp-day_button {
+  background: transparent !important;
+  color: #134e4a !important; /* teal-900 light */
+  border-radius: 0 !important;
+}
+
+.dark .rdp-range_middle .rdp-day_button {
+  color: #99f6e4 !important; /* teal-200 dark */
+}
+
+/* Range start/end — half-background via pseudo-element for clean split */
+.rdp-range_start,
+.rdp-range_end {
+  background: transparent !important;
+  position: relative !important;
+}
+
+/* Right-side fill for range_start (from center to right only, no bleed) */
+.rdp-range_start::before {
+  content: '' !important;
+  position: absolute !important;
+  top: 0 !important;
+  left: 50% !important;
+  right: unset !important;
+  width: 50% !important;
+  height: 100% !important;
+  background-color: #ccfbf1 !important; /* teal-100 light */
+  z-index: 0 !important;
+}
+
+.dark .rdp-range_start::before {
+  background-color: rgb(19 78 74 / 0.4) !important; /* teal-900/40 */
+}
+
+/* Left-side fill for range_end */
+.rdp-range_end::before {
+  content: '' !important;
+  position: absolute !important;
+  top: 0 !important;
+  left: 0 !important;
+  width: 50% !important;
+  height: 100% !important;
+  background-color: #ccfbf1 !important; /* teal-100 light */
+  z-index: 0 !important;
+}
+
+.dark .rdp-range_end::before {
+  background-color: rgb(19 78 74 / 0.4) !important; /* teal-900/40 */
+}
+
+/* Button sits above the pseudo-element */
+.rdp-range_start .rdp-day_button,
+.rdp-range_end .rdp-day_button {
+  position: relative !important;
+  z-index: 1 !important;
+  background-color: var(--primary) !important;
+  color: var(--primary-foreground) !important;
+  width: 32px !important;
+  height: 32px !important;
+  min-width: 32px !important;
+  max-width: 32px !important;
+  border-radius: 6px !important;
+}
+
+/* Today — dot only, no background */
+.rdp-today:not(.rdp-selected):not(.rdp-range_start):not(.rdp-range_end) .rdp-day_button::after {
+  content: '';
+  position: absolute;
+  bottom: 3px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background-color: var(--primary);
+}
+
+.rdp-today.rdp-selected .rdp-day_button::after,
+.rdp-today.rdp-range_start .rdp-day_button::after,
+.rdp-today.rdp-range_end .rdp-day_button::after {
+  background-color: var(--primary-foreground);
+}
+
+/* Remove table borders */
+.rdp-month_grid {
+  border-collapse: collapse !important;
+}
+
+.rdp-month_grid td,
+.rdp-month_grid th {
+  border: none !important;
+  padding: 2px !important;
 }

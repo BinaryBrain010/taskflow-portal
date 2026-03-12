@@ -11,8 +11,8 @@ const TYPE_LABELS: Record<TaskType, string> = {
 };
 
 const STATUS_STYLES: Record<Submission["status"], string> = {
-  pending: "bg-amber-500/15 text-amber-700 dark:text-amber-400",
-  approved: "bg-green-500/15 text-green-700 dark:text-green-400",
+  pending: "bg-amber-500/15 text-amber-700 dark:bg-amber-900/50 dark:text-amber-200",
+  approved: "bg-green-500/15 text-green-700 dark:bg-green-900/50 dark:text-green-200",
   rejected: "bg-destructive/15 text-destructive",
 };
 
@@ -59,8 +59,8 @@ export function RecentSubmissionsTable({
 
   if (isLoading) {
     return (
-      <div className="rounded-lg border border-border bg-card shadow-sm">
-        <div className="border-b border-border p-4">
+      <div className="overflow-hidden rounded-xl border border-border bg-card shadow-sm">
+        <div className="border-b border-border p-5">
           <h2 className="font-display text-sm font-semibold text-foreground">
             Recent submissions
           </h2>
@@ -83,8 +83,8 @@ export function RecentSubmissionsTable({
   const empty = list.length === 0;
 
   return (
-    <div className="rounded-lg border border-border bg-card shadow-sm">
-      <div className="border-b border-border p-4">
+    <div className="overflow-hidden rounded-xl border border-border bg-card shadow-sm">
+      <div className="border-b border-border p-5">
         <h2 className="font-display text-sm font-semibold text-foreground">
           Recent submissions
         </h2>

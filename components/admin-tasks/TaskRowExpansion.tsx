@@ -11,9 +11,9 @@ const STATUS_LABELS: Record<string, string> = {
 };
 
 const STATUS_BADGE_STYLES: Record<string, string> = {
-  approved: "bg-green-500/15 text-green-700 dark:text-green-400",
+  approved: "bg-green-500/15 text-green-700 dark:bg-green-900/50 dark:text-green-200",
   rejected: "bg-destructive/15 text-destructive",
-  pending: "bg-amber-500/15 text-amber-700 dark:text-amber-400",
+  pending: "bg-amber-500/15 text-amber-700 dark:bg-amber-900/50 dark:text-amber-200",
 };
 
 interface TaskRowExpansionProps {
@@ -33,7 +33,7 @@ export function TaskRowExpansion({ task }: TaskRowExpansionProps) {
   );
 
   return (
-    <div className="border-l-4 border-l-primary border-t border-border bg-muted/30 py-4 pl-4 pr-6">
+    <div className="border-l-4 border-l-primary border-t border-border bg-muted/50 py-4 pl-4 pr-6">
       <div className="flex flex-wrap gap-6">
         <div className="min-w-0 flex-1 rounded-lg border border-border/60 bg-card/50 px-4 py-3 shadow-sm">
           <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Slots remaining</p>

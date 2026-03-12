@@ -2,7 +2,6 @@
 
 import * as React from "react";
 import { CalendarIcon } from "lucide-react";
-import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
 import { cn } from "@/lib/utils";
 
@@ -99,18 +98,16 @@ export function DatePicker({
           />
           {showClear && (
             <div className="mt-3 flex justify-end border-t border-border pt-3">
-              <Button
+              <button
                 type="button"
-                variant="outline"
-                size="sm"
+                className="text-sm text-muted-foreground hover:text-foreground underline-offset-2 hover:underline"
                 onClick={() => {
                   onChange(undefined);
                   setOpen(false);
                 }}
-                className="h-7"
               >
                 Clear
-              </Button>
+              </button>
             </div>
           )}
         </div>

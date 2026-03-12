@@ -20,7 +20,7 @@ interface SubmissionFunnelProps {
 export function SubmissionFunnel({ submissions, isLoading }: SubmissionFunnelProps) {
   if (isLoading) {
     return (
-      <div className="rounded-lg border border-border bg-card p-4 shadow-sm">
+      <div className="rounded-xl border border-border bg-card p-5 shadow-sm">
         <h2 className="font-display text-sm font-semibold text-foreground">Submission funnel</h2>
         <div className="mt-3 h-8 w-full animate-pulse rounded-full bg-muted" />
         <div className="mt-4 space-y-2">
@@ -51,7 +51,7 @@ export function SubmissionFunnel({ submissions, isLoading }: SubmissionFunnelPro
   const empty = total === 0;
 
   return (
-    <div className="rounded-lg border border-border bg-card p-4 shadow-sm">
+    <div className="rounded-xl border border-border bg-card p-5 shadow-sm">
       <h2 className="font-display text-sm font-semibold text-foreground">Submission funnel</h2>
       {empty ? (
         <p className="mt-3 text-sm text-muted-foreground">No submissions yet.</p>

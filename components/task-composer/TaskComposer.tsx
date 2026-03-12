@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import type { Task, ProofType } from "@/lib/types";
@@ -15,6 +16,7 @@ import { MarkdownEditor } from "./MarkdownEditor";
 import { ExpiryDatePicker } from "./ExpiryDatePicker";
 import { taskComposerSchema, defaultValues, type TaskComposerFormValues } from "./taskComposerSchema";
 import { useCreateTask, useUpdateTask } from "@/hooks/useTasks";
+import { ConfirmDialogRoot, ConfirmDialogContent } from "@/components/ui/confirm-dialog";
 import { cn } from "@/lib/utils";
 
 const TASK_TYPES: { value: TaskComposerFormValues["type"]; label: string }[] = [
@@ -76,9 +78,11 @@ function formValuesToPayload(values: TaskComposerFormValues): Omit<Task, "id" | 
 }
 
 export function TaskComposer({ task }: { task?: Task | null }) {
+  const router = useRouter();
   const isEdit = !!task;
   const [successTask, setSuccessTask] = useState<Task | null>(null);
   const [submitProgress, setSubmitProgress] = useState(0);
+  const [discardDialogOpen, setDiscardDialogOpen] = useState(false);
 
   const createMutation = useCreateTask();
   const updateMutation = useUpdateTask();
@@ -365,11 +369,37 @@ export function TaskComposer({ task }: { task?: Task | null }) {
           <Button type="submit" disabled={isPending}>
             {isEdit ? "Update task" : "Create task"}
           </Button>
-          <Link href="/admin/tasks" className={buttonVariants({ variant: "outline" })}>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => {
+              if (form.formState.isDirty) {
+                setDiscardDialogOpen(true);
+              } else {
+                router.push("/admin/tasks");
+              }
+            }}
+          >
             Cancel
-          </Link>
+          </Button>
         </div>
       </div>
+
+      <ConfirmDialogRoot open={discardDialogOpen} onOpenChange={setDiscardDialogOpen}>
+        <ConfirmDialogContent
+          title="Discard changes?"
+          description="You have unsaved changes. If you leave, your changes will be lost."
+          cancelLabel="Keep editing"
+          cancelVariant="default"
+          confirmLabel="Discard"
+          variant="destructive"
+          onConfirm={() => {
+            setDiscardDialogOpen(false);
+            router.push("/admin/tasks");
+          }}
+          onCancel={() => setDiscardDialogOpen(false)}
+        />
+      </ConfirmDialogRoot>
     </form>
   );
 }

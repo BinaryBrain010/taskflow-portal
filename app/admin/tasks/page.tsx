@@ -4,6 +4,7 @@ import React, {
   useMemo,
   useState,
   useCallback,
+  useEffect,
 } from "react";
 import Link from "next/link";
 import {
@@ -59,17 +60,17 @@ const TYPE_LABELS: Record<TaskType, string> = {
 };
 
 const TYPE_BADGE_STYLES: Record<TaskType, string> = {
-  survey: "border border-indigo-300 bg-indigo-500/15 text-indigo-700 dark:text-indigo-300 dark:border-indigo-500/40",
-  content_review: "border border-violet-300 bg-violet-500/15 text-violet-700 dark:text-violet-300 dark:border-violet-500/40",
-  data_labeling: "border border-orange-300 bg-orange-500/15 text-orange-700 dark:text-orange-300 dark:border-orange-500/40",
-  transcription: "border border-cyan-300 bg-cyan-500/15 text-cyan-700 dark:text-cyan-300 dark:border-cyan-500/40",
+  survey: "border border-indigo-300 bg-indigo-500/15 text-indigo-700 dark:border-indigo-500/40 dark:bg-indigo-900/50 dark:text-indigo-200",
+  content_review: "border border-violet-300 bg-violet-500/15 text-violet-700 dark:border-violet-500/40 dark:bg-violet-900/50 dark:text-violet-200",
+  data_labeling: "border border-orange-300 bg-orange-500/15 text-orange-700 dark:border-orange-500/40 dark:bg-orange-900/50 dark:text-orange-200",
+  transcription: "border border-cyan-300 bg-cyan-500/15 text-cyan-700 dark:border-cyan-500/40 dark:bg-cyan-900/50 dark:text-cyan-200",
 };
 
 const STATUS_BADGE_STYLES: Record<TaskStatus, string> = {
-  active: "bg-green-500/15 text-green-700 dark:text-green-400",
-  paused: "bg-amber-500/15 text-amber-700 dark:text-amber-400",
+  active: "bg-green-500/15 text-green-700 dark:bg-green-900/50 dark:text-green-200",
+  paused: "bg-amber-500/15 text-amber-700 dark:bg-amber-900/50 dark:text-amber-200",
   closed: "bg-muted text-muted-foreground",
-  draft: "bg-blue-500/15 text-blue-700 dark:text-blue-400",
+  draft: "bg-blue-500/15 text-blue-700 dark:bg-blue-900/50 dark:text-blue-200",
 };
 
 function formatReward(cents: number): string {
@@ -149,6 +150,7 @@ export default function AdminTasksPage() {
   const [bulkCampaignOpen, setBulkCampaignOpen] = useState(false);
   const [bulkRewardValue, setBulkRewardValue] = useState("");
   const [bulkCampaignId, setBulkCampaignId] = useState("");
+  const [toast, setToast] = useState<string | null>(null);
 
   const filters = useMemo(
     () => ({
@@ -197,6 +199,12 @@ export default function AdminTasksPage() {
     () => Object.entries(rowSelection).filter(([, v]) => v).map(([id]) => id),
     [rowSelection]
   );
+
+  useEffect(() => {
+    if (!toast) return;
+    const t = setTimeout(() => setToast(null), 3000);
+    return () => clearTimeout(t);
+  }, [toast]);
 
   const setSort = useCallback(
     (id: string, desc: boolean) => {
@@ -425,6 +433,7 @@ export default function AdminTasksPage() {
         setDeleteConfirmOpen(false);
         setDeleteTargetIds([]);
         setRowSelection({});
+        setToast(ids.length === 1 ? "Task deleted successfully" : "Tasks deleted successfully");
       },
     });
   };
@@ -464,6 +473,12 @@ export default function AdminTasksPage() {
   };
 
   const totalPages = Math.max(1, Math.ceil(sortedTasks.length / params.pageSize));
+
+  useEffect(() => {
+    if (!toast) return;
+    const t = setTimeout(() => setToast(null), 3000);
+    return () => clearTimeout(t);
+  }, [toast]);
 
   return (
     <div className="space-y-6">
@@ -693,15 +708,29 @@ export default function AdminTasksPage() {
       )}
 
       {/* Delete confirm */}
-      <ConfirmDialogRoot open={deleteConfirmOpen} onOpenChange={setDeleteConfirmOpen}>
+      <ConfirmDialogRoot
+        open={deleteConfirmOpen}
+        onOpenChange={(open) => {
+          setDeleteConfirmOpen(open);
+          if (!open) setDeleteTargetIds([]);
+        }}
+      >
         <ConfirmDialogContent
-          title={deleteTargetIds.length > 1 ? "Delete tasks?" : "Delete task?"}
+          title={
+            deleteTargetIds.length > 1
+              ? `Delete ${deleteTargetIds.length} tasks?`
+              : "Delete task?"
+          }
           description={
             deleteTargetIds.length > 1
-              ? `${deleteTargetIds.length} tasks will be permanently deleted.`
-              : "This task will be permanently deleted."
+              ? `This will permanently delete ${deleteTargetIds.length} tasks and all their associated submissions. This action cannot be undone.`
+              : (() => {
+                  const task = tasks.find((t) => t.id === deleteTargetIds[0]);
+                  const title = task?.title ?? "this task";
+                  return `This will permanently delete '${title}' and all its submissions. This action cannot be undone.`;
+                })()
           }
-          confirmLabel="Delete"
+          confirmLabel={deleteTargetIds.length > 1 ? `Delete ${deleteTargetIds.length} tasks` : "Delete task"}
           variant="destructive"
           onConfirm={handleBulkDelete}
           onCancel={() => {
@@ -714,60 +743,75 @@ export default function AdminTasksPage() {
 
       {/* Bulk reward modal */}
       <ConfirmDialogRoot open={bulkRewardOpen} onOpenChange={setBulkRewardOpen}>
-          <ConfirmDialogContent
-            title="Bulk update reward"
-            description={
-              <>
-                <p className="mb-3">Set reward (USD) for {selectedIds.length} task(s).</p>
-                <Label htmlFor="bulk-reward">Amount ($)</Label>
-                <Input
-                  id="bulk-reward"
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  value={bulkRewardValue}
-                  onChange={(e) => setBulkRewardValue(e.target.value)}
-                  className="mt-1"
-                  placeholder="0.00"
-                />
-              </>
-            }
-            confirmLabel="Update"
-            onConfirm={handleBulkReward}
-            onCancel={() => setBulkRewardOpen(false)}
-            loading={bulkUpdateMutation.isPending}
-          />
+        <ConfirmDialogContent
+          title={`Edit ${selectedIds.length} tasks`}
+          description={
+            <>
+              <p className="mb-3">
+                This will update reward for all {selectedIds.length} selected tasks.
+              </p>
+              <Label htmlFor="bulk-reward">Amount ($)</Label>
+              <Input
+                id="bulk-reward"
+                type="number"
+                min="0"
+                step="0.01"
+                value={bulkRewardValue}
+                onChange={(e) => setBulkRewardValue(e.target.value)}
+                className="mt-1"
+                placeholder="0.00"
+              />
+            </>
+          }
+          confirmLabel="Apply changes"
+          variant="default"
+          onConfirm={handleBulkReward}
+          onCancel={() => setBulkRewardOpen(false)}
+          loading={bulkUpdateMutation.isPending}
+        />
       </ConfirmDialogRoot>
 
       {/* Bulk campaign modal */}
       <ConfirmDialogRoot open={bulkCampaignOpen} onOpenChange={setBulkCampaignOpen}>
-          <ConfirmDialogContent
-            title="Bulk update campaign"
-            description={
-              <>
-                <p className="mb-3">Set campaign for {selectedIds.length} task(s).</p>
-                <Label htmlFor="bulk-campaign">Campaign</Label>
-                <select
-                  id="bulk-campaign"
-                  value={bulkCampaignId}
-                  onChange={(e) => setBulkCampaignId(e.target.value)}
-                  className="mt-1 h-9 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm"
-                >
-                  <option value="">None</option>
-                  {mockCampaigns.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.name}
-                    </option>
-                  ))}
-                </select>
-              </>
-            }
-            confirmLabel="Update"
-            onCancel={() => setBulkCampaignOpen(false)}
-            loading={bulkUpdateMutation.isPending}
-            onConfirm={handleBulkCampaign}
-          />
+        <ConfirmDialogContent
+          title={`Edit ${selectedIds.length} tasks`}
+          description={
+            <>
+              <p className="mb-3">
+                This will update campaign for all {selectedIds.length} selected tasks.
+              </p>
+              <Label htmlFor="bulk-campaign">Campaign</Label>
+              <select
+                id="bulk-campaign"
+                value={bulkCampaignId}
+                onChange={(e) => setBulkCampaignId(e.target.value)}
+                className="mt-1 h-9 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm"
+              >
+                <option value="">None</option>
+                {mockCampaigns.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                  </option>
+                ))}
+              </select>
+            </>
+          }
+          confirmLabel="Apply changes"
+          variant="default"
+          onCancel={() => setBulkCampaignOpen(false)}
+          onConfirm={handleBulkCampaign}
+          loading={bulkUpdateMutation.isPending}
+        />
       </ConfirmDialogRoot>
+
+      {toast && (
+        <div
+          role="status"
+          className="fixed bottom-4 left-1/2 z-50 -translate-x-1/2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-lg"
+        >
+          {toast}
+        </div>
+      )}
     </div>
   );
 }
