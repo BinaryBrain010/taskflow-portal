@@ -61,9 +61,10 @@ interface TriggerProps {
   children?: React.ReactNode;
   className?: string;
   showSearchIcon?: boolean;
+  disabled?: boolean;
 }
 
-function Trigger({ children, className, showSearchIcon }: TriggerProps) {
+function Trigger({ children, className, showSearchIcon, disabled }: TriggerProps) {
   const { value, open, setOpen, displayValue, loading } = useSelectContext();
   const ref = useRef<HTMLButtonElement>(null);
   const label = displayValue || (children ?? value ?? "");
@@ -71,6 +72,7 @@ function Trigger({ children, className, showSearchIcon }: TriggerProps) {
     <button
       ref={ref}
       type="button"
+      disabled={disabled}
       onClick={() => setOpen(!open)}
       aria-expanded={open}
       aria-haspopup="listbox"
